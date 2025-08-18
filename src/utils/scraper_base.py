@@ -142,11 +142,15 @@ class BaseScraper(ABC):
         if not fixtures:
             self.logger.warning(f"No fixtures to save for Spieltag {spieltag}")
             return None
-        
+
+        # Log each fixture before saving
+        for idx, fixture in enumerate(fixtures):
+            self.logger.info(f"Saving fixture idx={idx}: home='{fixture.get('home_team')}', away='{fixture.get('away_team')}', url='{fixture.get('url')}'")
+
         # Ensure directory exists
         output_dir = getattr(config, f"{self.source_name.upper()}_DIR")
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Get filename
         filename = config.get_output_filename(
             'fixtures', 
@@ -154,15 +158,15 @@ class BaseScraper(ABC):
             spieltag=spieltag
         )
         filepath = output_dir / filename
-        
+
         try:
             import pandas as pd
             df = pd.DataFrame(fixtures)
             df.to_csv(filepath, index=False, encoding='utf-8')
-            
+
             self.logger.info(f"✅ Saved {len(fixtures)} fixtures to {filepath}")
             return str(filepath)
-            
+
         except Exception as e:
             self.logger.error(f"❌ Error saving fixtures: {e}")
             return None
