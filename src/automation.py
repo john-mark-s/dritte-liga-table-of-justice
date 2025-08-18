@@ -184,9 +184,9 @@ class WeeklyUpdateManager:
                     url = row.get(url_column)
                     if not url or pd.isna(url):
                         continue
-                    
-                    self.logger.info(f"  Scraping match {idx + 1}/{len(df)}")
-                    
+
+                    self.logger.info(f"Scraping xG for fixture: idx={idx}, home='{row.get('home_team')}', away='{row.get('away_team')}', url='{url}'")
+
                     try:
                         if source == 'footystats':
                             result = self.fs_xg_scraper.scrape_match_xg(url)
@@ -194,10 +194,11 @@ class WeeklyUpdateManager:
                             result = self.sw_xg_scraper.scrape_match_xg(url)
                         else:
                             continue
-                        
+
+                        self.logger.info(f"xG result for idx={idx}: {result}")
+
                         if result:
                             if source == 'footystats':
-                                # Map team names to home/away
                                 home_team = row['home_team']
                                 if home_team.lower().replace(' ', '') in result['team_2_name'].lower().replace(' ', ''):
                                     df.at[idx, 'home_xG'] = result['team_2_xG']
@@ -208,14 +209,18 @@ class WeeklyUpdateManager:
                             else:  # soccerway
                                 df.at[idx, 'home_xG'] = result['home_xG']
                                 df.at[idx, 'away_xG'] = result['away_xG']
-                        
+
+                        self.logger.info(f"Fixture after xG: idx={idx}, home='{df.at[idx, 'home_team']}', away='{df.at[idx, 'away_team']}', home_xG='{df.at[idx, 'home_xG']}', away_xG='{df.at[idx, 'away_xG']}'")
+
                     except Exception as e:
                         self.logger.error(f"❌ Error scraping xG for match {idx + 1}: {e}")
-                    
-                    # Delay between matches
+
                     time.sleep(2)
-                
-                # Save xG file
+
+                # Log each row before saving
+                for idx, row in df.iterrows():
+                    self.logger.info(f"Saving row to CSV: idx={idx}, home='{row.get('home_team')}', away='{row.get('away_team')}', home_xG='{row.get('home_xG')}', away_xG='{row.get('away_xG')}'")
+
                 df.to_csv(xg_file, index=False)
                 self.logger.info(f"💾 Saved xG data: {xg_file}")
                 success = True

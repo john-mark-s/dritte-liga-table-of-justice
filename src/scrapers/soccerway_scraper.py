@@ -32,37 +32,23 @@ class SoccerwayFixturesScraper(BaseScraper):
         
         Args:
             target_spieltag: Spieltag number to scrape
-            
         Returns:
-            List of fixture dictionaries
+            List of fixture dictionaries (with normalized team names)
         """
         self.logger.info(f"⚽ Scraping Soccerway fixtures for Spieltag {target_spieltag}")
-        
         driver = self._create_driver()
         if not driver:
             return []
-        
         try:
-            # Navigate to fixtures page
             self.logger.debug(f"Loading: {self.fixtures_url}")
             driver.get(self.fixtures_url)
             time.sleep(3)
-            
-            # Handle consent popup
             self._handle_consent_popup(driver)
-            
-            # Click load previous button if needed
             self._load_previous_matches(driver)
-            
-            # Scrape fixtures
             fixtures = self._extract_fixtures(driver, target_spieltag)
-            
-            # Normalize team names
             fixtures = self.normalize_team_names(fixtures)
-            
             self.logger.info(f"✅ Scraped {len(fixtures)} fixtures for Spieltag {target_spieltag}")
             return fixtures
-            
         except Exception as e:
             self.logger.error(f"❌ Error scraping Soccerway: {e}")
             return []
@@ -168,77 +154,60 @@ class SoccerwayFixturesScraper(BaseScraper):
             return []
     
     def _parse_fixture_text(self, text: str, gameweek: str, url: str) -> Optional[Dict[str, Any]]:
-        """Parse fixture text into structured data - handles the new line-separated format"""
+        """Parse fixture text into structured data - robust team/score extraction"""
         try:
-            # The new format appears to be line-separated:
-            # Team1
-            # Score1
-            # Team2  
-            # Score2
-            # Index (sometimes)
-            # Bet1
-            # Bet2
-            # Bet3
-            
             lines = [line.strip() for line in text.split('\n') if line.strip()]
-            
-            if len(lines) < 7:  # Need at least: team1, score1, team2, score2, bet1, bet2, bet3
-                self.logger.warning(f"⚠️ Unexpected fixture format: {text}")
+            self.logger.debug(f"Parsing fixture text lines: {lines}")
+
+            # Separate team names (non-numeric) and scores (numeric)
+            team_names = [line for line in lines if not line.isdigit()]
+            scores = [line for line in lines if line.isdigit()]
+
+            self.logger.debug(f"Extracted team names: {team_names}")
+            self.logger.debug(f"Extracted scores: {scores}")
+
+            if len(team_names) < 2 or len(scores) < 2:
+                self.logger.warning(f"⚠️ Could not find two team names and two scores in: {text}")
                 return None
 
-            # Try to identify the pattern
-            # Look for two consecutive numeric values (scores)
-            score_indices = []
-            for i, line in enumerate(lines):
-                if line.isdigit():
-                    score_indices.append(i)
+            team1 = team_names[0]
+            team2 = team_names[1]
+            score1 = scores[0]
+            score2 = scores[1]
 
-            if len(score_indices) < 2:
-                self.logger.warning(f"⚠️ Could not find two scores in: {text}")
-                return None
-
-            # Assume first two numeric values are scores
-            score1_idx = score_indices[0]
-            score2_idx = score_indices[1]
-
-            # Team names should be before scores
-            if score1_idx == 0 or score2_idx <= score1_idx:
-                self.logger.warning(f"⚠️ Invalid score positions in: {text}")
-                return None
-
-            team1 = lines[score1_idx - 1]
-            score1 = lines[score1_idx]
-            team2 = lines[score2_idx - 1] 
-            score2 = lines[score2_idx]
+            self.logger.debug(f"Parsed teams: team1='{team1}', team2='{team2}', scores: {score1}-{score2}")
 
             # Find betting odds (should be 3 decimal numbers after scores)
             bet_lines = []
-            for i in range(score2_idx + 1, len(lines)):
-                line = lines[i]
+            for line in lines:
                 try:
-                    float(line)
-                    bet_lines.append(line)
+                    val = float(line)
+                    # Only add if not already in scores (to avoid adding scores as odds)
+                    if line not in scores:
+                        bet_lines.append(line)
                     if len(bet_lines) == 3:
                         break
                 except ValueError:
                     continue
 
+            self.logger.debug(f"Betting odds found: {bet_lines}")
+
             if len(bet_lines) < 3:
                 self.logger.warning(f"⚠️ Could not find 3 betting odds in: {text}")
                 return None
-            
+
             return {
                 "gameweek": gameweek,
                 "home_team": team1,
-                "away_team": team2, 
+                "away_team": team2,
                 "home_goals": score1,
                 "away_goals": score2,
                 "bet1": bet_lines[0],
-                "bet2": bet_lines[1], 
+                "bet2": bet_lines[1],
                 "bet3": bet_lines[2],
                 "url": url
             }
-            
+
         except Exception as e:
             self.logger.error(f"❌ Error parsing fixture text: {e}")
             return None
