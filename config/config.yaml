@@ -1,0 +1,88 @@
+# 3. Liga Table of Justice Configuration
+
+# Team name mappings for normalization across sources
+teams:
+  "1. FC Saarbrücken": ["1 FC Saarbrucken", "Saarbrücken"]
+  "1. FC Schweinfurt 05": ["1 FC Schweinfurt 1905", "Schweinfurt"]
+  "Energie Cottbus": ["FC Energie Cottbus", "Cottbus"]
+  "Erzgebirge Aue": ["FC Erzgebirge Aue", "Aue"]
+  "F.C. Hansa Rostock": ["FC Hansa Rostock", "Rostock"]
+  "FC Ingolstadt 04": ["FC Ingolstadt 04", "Ingolstadt"]
+  "FC Viktoria Köln": ["FC Viktoria Koln", "Viktoria"]
+  "MSV Duisburg": ["MSV Duisburg", "Duisburg"]
+  "Rot-Weiss Essen": ["Rot Weiss Essen", "RW Essen"]
+  "SC Verl": ["SC Verl 1924", "Verl"]
+  "SSV Jahn Regensburg": ["SSV Jahn 2000 Regensburg", "Regensburg"]
+  "SSV Ulm 1846": ["SSV Ulm 1846", "Ulm"]
+  "SV Waldhof Mannheim": ["SV Waldhof Mannheim 07", "Waldhof"]
+  "SV Wehen Wiesbaden": ["SV Wehen Wiesbaden", "Wiesbaden"]
+  "TSG Hoffenheim II U23": ["TSG 1899 Hoffenheim II", "Hoffenheim II"]
+  "TSV 1860 München": ["TSV 1860 Munchen", "1860 München"]
+  "Alemannia Aachen": ["TSV Alemannia Aachen", "Alemannia"]
+  "TSV Havelse": ["TSV Havelse", "Havelse"]
+  "VfB Stuttgart II U21": ["VfB Stuttgart 1893 II", "Stuttgart II"]
+  "VfL Osnabrück": ["VfL Osnabruck", "Osnabrück"]
+
+# Spieltag schedule mapping
+spieltag_map:
+  1: ["1-1/8/2025", "2025-08-05 09:00:00"]
+  2: ["2-10/8/2025", "2025-08-12 09:00:00"]
+  3: ["3-23/8/2025", "2025-08-26 09:00:00"]
+  4: ["4-30/8/2025", "2025-09-02 09:00:00"]
+  5: ["5-13/9/2025", "2025-09-16 09:00:00"]
+  6: ["6-17/9/2025", "2025-09-19 09:00:00"]
+  7: ["7-20/9/2025", "2025-09-22 09:00:00"]
+  8: ["8-27/9/2025", "2025-09-29 09:00:00"]
+  9: ["9-1/10/2025", "2025-10-03 09:00:00"]
+  10: ["10-4/10/2025", "2025-10-06 09:00:00"]
+  11: ["11-18/10/2025", "2025-10-20 09:00:00"]
+  12: ["12-25/10/2025", "2025-10-27 09:00:00"]
+  13: ["13-1/11/2025", "2025-11-03 09:00:00"]
+  14: ["14-8/11/2025", "2025-11-10 09:00:00"]
+  15: ["15-22/11/2025", "2025-11-24 09:00:00"]
+  16: ["16-29/11/2025", "2025-12-01 09:00:00"]
+  17: ["17-6/12/2025", "2025-12-08 09:00:00"]
+  18: ["18-13/12/2025", "2025-12-15 09:00:00"]
+  19: ["19-20/12/2025", "2025-12-22 09:00:00"]
+  20: ["20-17/1/2026", "2026-01-19 09:00:00"]
+  21: ["21-24/1/2026", "2026-01-26 09:00:00"]
+  22: ["22-31/1/2026", "2026-02-02 09:00:00"]
+  23: ["23-7/2/2026", "2026-02-09 09:00:00"]
+  24: ["24-14/2/2026", "2026-02-16 09:00:00"]
+  25: ["25-21/2/2026", "2026-02-23 09:00:00"]
+  26: ["26-28/2/2026", "2026-03-02 09:00:00"]
+  27: ["27-4/3/2026", "2026-03-06 09:00:00"]
+  28: ["28-7/3/2026", "2026-03-09 09:00:00"]
+  29: ["29-14/3/2026", "2026-03-16 09:00:00"]
+  30: ["30-21/3/2026", "2026-03-23 09:00:00"]
+  31: ["31-4/4/2026", "2026-04-06 09:00:00"]
+  32: ["32-8/4/2026", "2026-04-10 09:00:00"]
+  33: ["33-11/4/2026", "2026-04-13 09:00:00"]
+  34: ["34-18/4/2026", "2026-04-20 09:00:00"]
+  35: ["35-25/4/2026", "2026-04-27 09:00:00"]
+  36: ["36-2/5/2026", "2026-05-04 09:00:00"]
+  37: ["37-9/5/2026", "2026-05-11 09:00:00"]
+  38: ["38-16/5/2026", "2026-05-18 09:00:00"]
+
+# Data source configurations
+sources:
+  footystats:
+    name: "FootyStats"
+    base_url: "https://footystats.org"
+    fixtures_url: "https://footystats.org/de/germany/3-liga/fixtures"
+    enabled: true
+  
+  soccerway:
+    name: "Soccerway"
+    base_url: "https://int.soccerway.com"
+    fixtures_url: "https://int.soccerway.com/national/germany/3-liga/2025-2026/regular-season/7d7f5e97-d438-4f6d-91f6-034384a5cd03/matches"
+    enabled: true
+
+# Output file configurations
+output_files:
+  fixtures: "{source}_3liga-fixtures_spieltag-{spieltag}.csv"
+  xg_data: "{source}_3liga-fixtures_spieltag-{spieltag}_xg.csv"
+  xp_data: "{source}_3liga-fixtures_spieltag-{spieltag}_xp.csv"
+  season_xp: "{source}_3liga_season_xP.csv"
+  season_xg: "{source}_3liga_season_xG.csv"
+  standings: "3liga_standings.csv"
