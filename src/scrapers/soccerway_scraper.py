@@ -36,6 +36,18 @@ class SoccerwayFixturesScraper(BaseScraper):
             List of fixture dictionaries (with normalized team names)
         """
         self.logger.info(f"⚽ Scraping Soccerway fixtures for Spieltag {target_spieltag}")
+
+        # Check if spieltag date is in the future
+        spieltag_map = getattr(config, 'SPIELTAG_MAP', {})
+        if target_spieltag in spieltag_map:
+            date_str = spieltag_map[target_spieltag][1]
+            from datetime import datetime
+            match_datetime = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            now = datetime.now()
+            if match_datetime > now:
+                self.logger.info(f"⏩ Skipping Spieltag {target_spieltag}: date {date_str} is in the future.")
+                return []
+
         driver = self._create_driver()
         if not driver:
             return []
@@ -44,6 +56,10 @@ class SoccerwayFixturesScraper(BaseScraper):
             driver.get(self.fixtures_url)
             time.sleep(3)
             self._handle_consent_popup(driver)
+
+            # Select the correct Spielwoche from dropdown
+            self._select_spielwoche(driver, target_spieltag)
+
             self._load_previous_matches(driver)
             fixtures = self._extract_fixtures(driver, target_spieltag)
             fixtures = self.normalize_team_names(fixtures)
@@ -57,6 +73,29 @@ class SoccerwayFixturesScraper(BaseScraper):
                 driver.quit()
             except:
                 pass
+
+    def _select_spielwoche(self, driver, target_spieltag: int) -> None:  
+        """Select the correct Spielwoche/Game week/Spieltag from the picker."""  
+        try:  
+            # Open the dropdown  
+            dropdown_button = WebDriverWait(driver, 10).until(  
+                EC.element_to_be_clickable((By.ID, "unique_flyout_transfer_custom_week_button"))  
+            )  
+            dropdown_button.click()  
+            self.logger.info("✅ Opened Game week dropdown")  
+    
+            # Select the target Game week  
+            option_xpath = f"//div[@id='dropdown_picker_unique_flyout_transfer_custom_week_button']//div[span//span[contains(text(), 'Game week {target_spieltag}')]]"  
+            option = WebDriverWait(driver, 10).until(  
+                EC.element_to_be_clickable((By.XPATH, option_xpath))  
+            )  
+            option.click()  
+            self.logger.info(f"✅ Selected Game week {target_spieltag}")  
+            
+            time.sleep(6)  # Wait for the page to update  
+    
+        except Exception as e:  
+            self.logger.warning(f"⚠️ Error selecting Spielwoche: {e}")  
     
     def _create_driver(self) -> Optional[webdriver.Chrome]:
         """Create and configure Chrome driver"""
@@ -114,44 +153,74 @@ class SoccerwayFixturesScraper(BaseScraper):
     def _extract_fixtures(self, driver, target_spieltag: int) -> List[Dict[str, Any]]:
         """Extract fixtures from the page"""
         fixtures = []
-        current_gameweek = None
         
         try:
-            items = driver.find_elements(By.CSS_SELECTOR, "div[data-known-size]")
-            self.logger.debug(f"Found {len(items)} page items")
-            
-            for item in items:
-                text = item.text.strip()
+            fixture_divs = driver.find_elements(By.CSS_SELECTOR, "div.sc-4e66d108-3")  
+            for fixture in fixture_divs:
                 
-                # Check if this is a gameweek header
-                if text.startswith("Game week"):
-                    current_gameweek = text
-                    continue
-                
-                # Extract match URL
                 try:
-                    link_elem = item.find_element(By.TAG_NAME, "a")
-                    match_url = link_elem.get_attribute("href")
-                except:
-                    match_url = None
-                
-                # Process match if URL exists and gameweek matches
-                if match_url and current_gameweek:
-                    try:
-                        gw_number = int(current_gameweek.split()[-1])
-                    except:
-                        gw_number = None
+                    # Match URL
+                    link = fixture.find_element(By.TAG_NAME, "a").get_attribute("href")  
                     
-                    if gw_number == target_spieltag:
-                        fixture = self._parse_fixture_text(text, current_gameweek, match_url)
-                        if fixture:
-                            fixtures.append(fixture)
-            
-            return fixtures
+                    # Teams
+                    team_spans = fixture.find_elements(By.XPATH, ".//span[contains(@class, 'label') and contains(@class, 'dDQFLa')]")  
+                    team_names = [t.text.strip() for t in team_spans if t.text.strip()]  
+                
+                    if len(team_names) < 2:  
+                        name_spans = fixture.find_elements(By.XPATH, ".//div[contains(@class, 'label')]//span[@class='name']")  
+                        team_names = [n.text.strip() for n in name_spans if n.text.strip()]  
+
+                    # Try to extract team names using multiple strategies
+                    team_names = []
+                    
+                                    # 1. All <span> with class 'label' inside the fixture, but not 'score'
+                    label_spans = fixture.find_elements(By.XPATH, ".//span[contains(@class, 'label') and not(contains(@class, 'score'))]")
+                    for span in label_spans:
+                        txt = span.text.strip()
+                        # Filter out empty, odds, dates, and other non-team labels
+                        if txt and re.match(r"^[A-Za-z0-9ÄÖÜäöüß \-\.]+$", txt) and len(txt) > 2:
+                            team_names.append(txt)
+
+                    # 2. If not found, look for <span class="name">
+                    if len(team_names) < 2:
+                        name_spans = fixture.find_elements(By.XPATH, ".//span[@class='name']")
+                        for n in name_spans:
+                            txt = n.text.strip()
+                            if txt and len(txt) > 2:
+                                team_names.append(txt)
+
+                    # Remove duplicates
+                    team_names = list(dict.fromkeys(team_names))
+                    
+                    
+                    if len(team_names) < 2:  
+                        continue  
+  
+                    home_team = team_names[0]  
+                    away_team = team_names[1]
+                    
+                    score_spans = fixture.find_elements(By.XPATH, ".//span[contains(@class, 'label') and contains(@class, 'score') and string-length(normalize-space(text())) > 0]")  
+                    score_texts = [s.text.strip() for s in score_spans if s.text.strip().isdigit()]  
+    
+                    score_home = score_texts[0] if len(score_texts) > 0 else None  
+                    score_away = score_texts[1] if len(score_texts) > 1 else None  
+    
+                    fixtures.append({  
+                        "spieltag": target_spieltag,  
+                        "home": home_team,  
+                        "away": away_team,  
+                        "score_home": score_home,  
+                        "score_away": score_away,  
+                        "url": link  
+                    })  
+                    
+                except Exception as e:  
+                    self.logger.warning(f"⚠️ Skipped fixture: {e}")                    
             
         except Exception as e:
             self.logger.error(f"❌ Error extracting fixtures: {e}")
-            return []
+            
+        return fixtures
     
     def _parse_fixture_text(self, text: str, gameweek: str, url: str) -> Optional[Dict[str, Any]]:
         """Parse fixture text into structured data - robust team/score extraction"""
