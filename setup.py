@@ -68,8 +68,8 @@ setup(
     keywords="football soccer bundesliga xg expected-goals analytics dashboard",
     
     project_urls={
-        "Bug Reports": "https://github.com/yourusername/3liga-table-of-justice/issues",
-        "Source": "https://github.com/yourusername/3liga-table-of-justice",
-        "Documentation": "https://github.com/yourusername/3liga-table-of-justice#readme",
+        "Bug Reports": "https://github.com/john-mark-s/dritte-liga-table-of-justice/issues",
+        "Source": "https://github.com/john-mark-s/dritte-liga-table-of-justice",
+        "Documentation": "https://github.com/john-mark-s/dritte-liga-table-of-justice#readme",
     },
 )
