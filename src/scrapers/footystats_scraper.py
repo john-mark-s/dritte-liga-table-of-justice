@@ -3,309 +3,226 @@ FootyStats fixtures
 """
 
 import re
+import csv
+import json
+import time
+import random
+import chromedriver_autoinstaller
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
-import json
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 
 from ..utils.scraper_base import BaseScraper
 from ..utils.config import config
 from ..utils.logger import get_logger
 
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+]
+
 class FootyStatsScraper(BaseScraper):
-    
     def __init__(self):
         super().__init__('footystats')
         self.base_url = config.SOURCES.get('footystats', {}).get('base_url', 'https://footystats.org')
         self.fixtures_url = config.SOURCES.get('footystats', {}).get('fixtures_url', 
-                                              'https://footystats.org/de/germany/3-liga/fixtures')
+                                              'https://footystats.org/germany/3-liga/fixtures')
+    
+    def soccerway_to_footystats_spieltag(self, soccerway_spieltag):
+        """
+        Maps Soccerway Spieltag (1-37) to Footystats Spieltag (37-1).
+        """
+        return 38 - soccerway_spieltag
+    
+    def get_selenium_html(self, url):
+        """Get HTML content using Selenium with error handling"""
+        driver = None
+        try:
+            chromedriver_autoinstaller.install()
+            user_agent = random.choice(USER_AGENTS)
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument(f'user-agent={user_agent}')
+
+            # Mask referer and other headers via Chrome arguments
+            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {
+                'headers': {
+                    'Referer': 'https://www.google.com/',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'DNT': '1'
+                }
+            })
+            
+            self.logger.info(f"Loading URL: {url}")
+            driver.get(url)
+            time.sleep(3)  # Wait for page to load
+            
+            # Save HTML
+            html_path = 'footystats_fixtures.html'
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(driver.page_source)
+            self.logger.info(f"Selenium HTML saved to {html_path}")
+
+            return html_path
+            
+        except Exception as e:
+            self.logger.error(f"Error getting HTML with Selenium: {e}")
+            raise
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except Exception as e:
+                    self.logger.warning(f"Error closing driver: {e}")
+    
+    def parse_matches_from_html(self, html_path, footystats_spieltag, soccerway_spieltag):
+        """
+        Parse matches for a given Footystats Spieltag from the HTML file.
+        Returns a list of match dicts with error handling.
+        """
+        try:
+            with open(html_path, 'r', encoding='utf-8') as f:
+                html = f.read()
+        except Exception as e:
+            self.logger.error(f"Error reading HTML file {html_path}: {e}")
+            return []
+        
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+            week_div = soup.find('div', {'data-game-week': str(footystats_spieltag)})
+            if not week_div:
+                self.logger.warning(f'No game week {footystats_spieltag} found in HTML!')
+                return []
+                
+            matches = []
+            match_elements = week_div.select('ul.match.row')
+            self.logger.info(f"Found {len(match_elements)} match elements for game week {footystats_spieltag}")
+            
+            for i, match_ul in enumerate(match_elements):
+                try:
+                    # Extract home team
+                    home_team = None
+                    home_a = match_ul.select_one('a.team.home')
+                    if home_a:
+                        home_span = home_a.select_one('span.hover-modal-parent')
+                        if home_span:
+                            home_team = home_span.get_text(strip=True)
+                            # Normalize team name using config
+                            home_team = config.normalize_team_name(home_team)
+                        
+                    # Extract away team
+                    away_team = None
+                    away_a = match_ul.select_one('a.team.away')
+                    if away_a:
+                        away_span = away_a.select_one('span.hover-modal-parent')
+                        if away_span:
+                            away_team = away_span.get_text(strip=True)
+                            # Normalize team name using config
+                            away_team = config.normalize_team_name(away_team)
+                    
+                    # Extract scores and URL
+                    score_home = None
+                    score_away = None
+                    url = None
+                    h2h_a = match_ul.select_one('a.h2h-link')
+                    if h2h_a:
+                        score_span = h2h_a.select_one('span.ft-score')
+                        if score_span:
+                            score_text = score_span.get_text(strip=True)
+                            if score_text and '-' in score_text:
+                                parts = score_text.split('-')
+                                if len(parts) == 2:
+                                    score_home = parts[0].strip()
+                                    score_away = parts[1].strip()
+                        url = 'https://footystats.org' + h2h_a.get('href', '')
+                    
+                    match_data = {
+                        'spieltag': soccerway_spieltag,
+                        'home_team': home_team,
+                        'away_team': away_team,
+                        'score_home': score_home,
+                        'score_away': score_away,
+                        'url': url
+                    }
+                    matches.append(match_data)
+                    
+                except Exception as e:
+                    self.logger.warning(f"Error parsing match {i+1}: {e}")
+                    continue
+                    
+            self.logger.info(f"Successfully parsed {len(matches)} matches")
+            return matches
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing HTML: {e}")
+            return []
+    
+    def export_matches_to_csv(self, matches, soccerway_spieltag):
+        """
+        Export matches to a CSV file named by the Soccerway Spieltag.
+        """
+        csv_path = f'footystats_3liga-fixtures_spieltag-{soccerway_spieltag}.csv'
+        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['spieltag', 'home_team', 'away_team', 'score_home', 'score_away', 'url']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for match in matches:
+                writer.writerow(match)
+        print(f"Matches exported to {csv_path}")
+        return csv_path
     
     def scrape_fixtures(self, target_spieltag: int) -> List[Dict[str, Any]]:
-        """
-        Scrape fixtures for a specific spieltag
-        
-        Args:
-            target_spieltag: Spieltag number to scrape
-            
-        Returns:
-            List of fixture dictionaries
-        """
         self.logger.info(f"🏈 Scraping FootyStats fixtures for Spieltag {target_spieltag}")
         
-        response = self.make_request(self.fixtures_url)
-        if not response:
-            self.logger.error("❌ Failed to get response from FootyStats")
-            return []
+        # Check if spieltag date is in the future
+        spieltag_map = getattr(config, 'SPIELTAG_MAP', {})
+        if target_spieltag in spieltag_map:
+            date_str = spieltag_map[target_spieltag][1]
+            match_datetime = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            now = datetime.now()
+            if match_datetime > now:
+                self.logger.info(f"⏩ Skipping Spieltag {target_spieltag}: date {date_str} is in the future.")
+                return []
         
-        try:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Save a small test sample instead of full HTML
-            self._save_test_sample(soup, target_spieltag)
-            
-            # Find match tables using the correct selector from your HTML
-            match_tables = soup.select('div.full-matches-table')
-            
-            if not match_tables:
-                self.logger.error("❌ No match tables found with selector 'div.full-matches-table'")
-                # Try alternative selectors
-                alt_selectors = [
-                    'div[class*="matches-table"]',
-                    'table.matches-table',
-                    'div[data-game-week]'
-                ]
-                for selector in alt_selectors:
-                    match_tables = soup.select(selector)
-                    if match_tables:
-                        self.logger.info(f"✅ Found tables with alternative selector: {selector}")
-                        break
-                
-                if not match_tables:
-                    self.logger.error("❌ No match tables found with any selector")
-                    return []
-            
-            fixtures = []
-            self.logger.debug(f"Found {len(match_tables)} match tables")
-            
-            for table_div in match_tables:
-                table_fixtures = self._extract_fixtures_from_table(table_div, target_spieltag)
-                fixtures.extend(table_fixtures)
-            
-            # Normalize team names
-            fixtures = self.normalize_team_names(fixtures)
-            
-            # Log detailed results
-            self._log_scraping_results(fixtures, target_spieltag)
-            
-            return fixtures
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error parsing FootyStats response: {e}", exc_info=True)
-            return []
-    
-    def _save_test_sample(self, soup: BeautifulSoup, spieltag: int):
-        """Save a small test sample for debugging instead of full HTML"""
-        try:
-            # Find the first match table and extract just that section
-            match_table = soup.select_one('div.full-matches-table')
-            if match_table:
-                # Get header info
-                header = match_table.select_one('h2')
-                header_text = header.get_text(strip=True) if header else "No header found"
-                
-                # Get first few matches
-                matches = match_table.select('tr.match')[:3]  # Just first 3 matches
-                
-                sample_data = {
-                    'timestamp': datetime.now().isoformat(),
-                    'spieltag_target': spieltag,
-                    'header_found': header_text,
-                    'matches_found': len(match_table.select('tr.match')),
-                    'sample_matches': []
-                }
-                
-                for match in matches:
-                    match_data = {
-                        'html': str(match)[:500] + "..." if len(str(match)) > 500 else str(match),
-                        'date_cell': match.select_one('td.date').get_text(strip=True) if match.select_one('td.date') else "No date",
-                        'home_team': self._extract_team_name(match.select_one('td.team-home')),
-                        'away_team': self._extract_team_name(match.select_one('td.team-away')),
-                        'score': match.select_one('td.status .ft-score').get_text(strip=True) if match.select_one('td.status .ft-score') else "No score"
-                    }
-                    sample_data['sample_matches'].append(match_data)
-                
-                # Save to JSON file
-                with open(f'footystats_test_sample_spieltag_{spieltag}.json', 'w', encoding='utf-8') as f:
-                    json.dump(sample_data, f, indent=2, ensure_ascii=False)
-                
-                self.logger.info(f"📄 Saved test sample to footystats_test_sample_spieltag_{spieltag}.json")
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ Could not save test sample: {e}")
-    
-    def _extract_fixtures_from_table(self, table_div, target_spieltag: int) -> List[Dict[str, Any]]:
-        """Extract fixtures from a table div - FIXED VERSION"""
+        # Convert Soccerway spieltag to Footystats spieltag
+        footystats_spieltag = self.soccerway_to_footystats_spieltag(target_spieltag)
+        
+        # Get HTML using Selenium
+        html_path = self.get_selenium_html(self.fixtures_url)
+        
+        # Parse matches from HTML
+        matches = self.parse_matches_from_html(html_path, footystats_spieltag, target_spieltag)
+        
+        # Export to CSV
+        csv_path = self.export_matches_to_csv(matches, target_spieltag)
+        
+        # Convert matches to the expected format for return value
         fixtures = []
-        
-        # Extract spieltag info from header
-        header = table_div.select_one('.invisible-header h2')
-        if not header:
-            header = table_div.select_one('h2')
-        
-        spieltag_info = self._parse_header(header, target_spieltag)
-        if not spieltag_info['matches_target']:
-            return fixtures
-        
-        # Find match rows - use the correct selector from your HTML
-        match_rows = table_div.select('tr.match.complete')
-        
-        self.logger.debug(f"Found {len(match_rows)} completed matches in table")
-        
-        for row in match_rows:
-            fixture = self._parse_fixture_row(row, spieltag_info)
-            if fixture:
-                fixtures.append(fixture)
-                self.logger.debug(f"✅ Parsed: {fixture['home_team']} vs {fixture['away_team']}")
-            else:
-                self.logger.debug("⚠️ Failed to parse fixture row")
-        
+        for match in matches:
+            fixtures.append({
+                'home_team': match['home_team'],
+                'away_team': match['away_team'],
+                'home_goals': match['score_home'],  # Map to expected field name
+                'away_goals': match['score_away'],  # Map to expected field name
+                'match_date': '',  # You'll need to extract this from the HTML
+                'match_time': '',  # You'll need to extract this from the HTML
+                'url': match['url']
+            })
+            
         return fixtures
-    
-    def _parse_header(self, header, target_spieltag: int) -> Dict[str, Any]:
-        """Parse header to extract spieltag information"""
-        info = {
-            'spieltag': "Unknown",
-            'spieltag_date': "",
-            'matches_target': False
-        }
-        
-        if not header:
-            self.logger.warning("⚠️ No header found in table")
-            return info
-        
-        header_text = header.get_text(strip=True)
-        self.logger.debug(f"Header text: '{header_text}'")
-        
-        # Parse "Spieltag 1 - 1/8/2025" format
-        if ' - ' in header_text:
-            parts = header_text.split(' - ')
-            spieltag_part = parts[0].strip()
-            date_part = parts[1].strip() if len(parts) > 1 else ""
-            
-            # Extract spieltag number
-            match = re.search(r'Spieltag\s+(\d+)', spieltag_part, re.IGNORECASE)
-            if match:
-                spieltag_num = int(match.group(1))
-                info['spieltag'] = str(spieltag_num)
-                info['spieltag_date'] = date_part
-                info['matches_target'] = (spieltag_num == target_spieltag)
-                
-                self.logger.debug(f"Parsed Spieltag {spieltag_num}, target: {target_spieltag}, matches: {info['matches_target']}")
-            else:
-                self.logger.warning(f"⚠️ Could not parse spieltag number from: '{spieltag_part}'")
-        else:
-            self.logger.warning(f"⚠️ Unexpected header format: '{header_text}'")
-        
-        return info
-    
-    def _parse_fixture_row(self, row, spieltag_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Parse a single fixture row - FIXED VERSION"""
-        try:
-            fixture = {
-                'spieltag': spieltag_info['spieltag'],
-                'spieltag_date': spieltag_info['spieltag_date'],
-                'match_date': '',
-                'match_time': '',
-                'home_team': '',
-                'away_team': '',
-                'home_goals': '',
-                'away_goals': '',
-                'stats_link': ''
-            }
-            
-            # Extract date and time using the specific structure from your HTML
-            date_cell = row.select_one('td.date')
-            if date_cell:
-                # Look for the timezone span with the correct class
-                date_span = date_cell.select_one('span.timezone-convert-match-month')
-                if date_span:
-                    date_text = date_span.get_text(strip=True)  # "1/8 19:00"
-                    if ' ' in date_text:
-                        date_part, time_part = date_text.split(' ', 1)
-                        fixture['match_date'] = date_part
-                        fixture['match_time'] = time_part
-                    else:
-                        fixture['match_date'] = date_text
-            
-            # Extract home team - CORRECTED based on your HTML structure
-            home_cell = row.select_one('td.team-home')
-            if home_cell:
-                fixture['home_team'] = self._extract_team_name(home_cell)
-            
-            # Extract away team - CORRECTED based on your HTML structure  
-            away_cell = row.select_one('td.team-away')
-            if away_cell:
-                fixture['away_team'] = self._extract_team_name(away_cell)
-            
-            # Extract score - using the specific structure from your HTML
-            status_cell = row.select_one('td.status')
-            if status_cell:
-                score_elem = status_cell.select_one('span.ft-score')
-                if score_elem:
-                    score_text = score_elem.get_text(strip=True)  # "1 - 1"
-                    if ' - ' in score_text:
-                        home_score, away_score = score_text.split(' - ')
-                        fixture['home_goals'] = home_score.strip()
-                        fixture['away_goals'] = away_score.strip()
-            
-            # Extract stats link
-            link_cell = row.select_one('td.link')
-            if not link_cell:
-                # Try alternative selector
-                link_cell = row.select_one('a[href*="stats"]')
-            
-            if link_cell:
-                link_elem = link_cell.select_one('a') if link_cell.name != 'a' else link_cell
-                if link_elem and link_elem.get('href'):
-                    href = link_elem.get('href')
-                    if href.startswith('/'):
-                        fixture['stats_link'] = urljoin(self.base_url, href)
-                    elif href.startswith('http'):
-                        fixture['stats_link'] = href
-                    else:
-                        fixture['stats_link'] = urljoin(self.base_url, '/' + href)
-            
-            # Validate fixture has required data
-            if fixture['home_team'] and fixture['away_team']:
-                if fixture['home_team'] != fixture['away_team']:
-                    return fixture
-                else:
-                    self.logger.warning(f"⚠️ Same team for home and away: '{fixture['home_team']}'")
-            else:
-                self.logger.warning(f"⚠️ Missing team names - Home: '{fixture['home_team']}', Away: '{fixture['away_team']}'")
-                
-        except Exception as e:
-            self.logger.error(f"❌ Error parsing fixture row: {e}", exc_info=True)
-        
-        return None
-    
-    def _extract_team_name(self, team_cell) -> str:
-        """Extract team name from team cell - FIXED based on your HTML structure"""
-        if not team_cell:
-            return ""
-        
-        try:
-            # Based on your HTML, team names are in <a> tags with <span> inside
-            # <a class="ar" href="/de/clubs/rot-weiss-essen-6298"><span>Rot Weiss Essen</span></a>
-            
-            # First try to find the span inside the link
-            team_span = team_cell.select_one('a span')
-            if team_span:
-                team_name = team_span.get_text(strip=True)
-                if team_name:
-                    return team_name
-            
-            # Fallback: try just the link text
-            team_link = team_cell.select_one('a')
-            if team_link:
-                team_name = team_link.get_text(strip=True)
-                if team_name:
-                    return team_name
-            
-            # Final fallback: cell text
-            team_name = team_cell.get_text(strip=True)
-            # Clean up any extra text (like "Quoten" from your HTML)
-            lines = team_name.split('\n')
-            for line in lines:
-                line = line.strip()
-                if line and line != "Quoten" and not line.isdigit():
-                    return line
-                    
-        except Exception as e:
-            self.logger.warning(f"⚠️ Error extracting team name: {e}")
-        
-        return ""
     
     def _log_scraping_results(self, fixtures: List[Dict[str, Any]], target_spieltag: int):
         """Log detailed scraping results for monitoring"""
@@ -348,44 +265,6 @@ class FootyStatsScraper(BaseScraper):
                 self.logger.info("✅ All fixtures have complete data")
         else:
             self.logger.warning("⚠️ No fixtures scraped!")
-    
-    def test_scraper(self, target_spieltag: int = 1) -> Dict[str, Any]:
-        """Test the scraper and return diagnostic information"""
-        self.logger.info(f"🧪 Testing FootyStats scraper for Spieltag {target_spieltag}")
-        
-        test_results = {
-            'success': False,
-            'fixtures_count': 0,
-            'errors': [],
-            'warnings': [],
-            'sample_fixtures': [],
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        try:
-            fixtures = self.scrape_fixtures(target_spieltag)
-            test_results['fixtures_count'] = len(fixtures)
-            test_results['sample_fixtures'] = fixtures[:3]  # First 3 fixtures
-            test_results['success'] = len(fixtures) > 0
-            
-            if not fixtures:
-                test_results['errors'].append("No fixtures scraped")
-            
-            # Validate fixture data
-            for fixture in fixtures[:5]:  # Check first 5
-                if not fixture['home_team']:
-                    test_results['warnings'].append("Missing home team name")
-                if not fixture['away_team']:
-                    test_results['warnings'].append("Missing away team name")
-                if fixture['home_team'] == fixture['away_team']:
-                    test_results['warnings'].append("Home and away team names are identical")
-                    
-        except Exception as e:
-            test_results['errors'].append(str(e))
-        
-        self.logger.info(f"🧪 Test complete: {test_results}")
-        return test_results
-
 
 class FootyStatsXGScraper:
     """Scraper for xG data from FootyStats match pages - Enhanced version"""

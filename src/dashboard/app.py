@@ -3,16 +3,17 @@
 3. Liga Table of Justice - Interactive Dashboard
 """
 
+import sys
+import dash
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import dash
-from dash import dcc, html, Input, Output, callback, dash_table
 import dash_bootstrap_components as dbc
 from pathlib import Path
-import sys
 from datetime import datetime
+from plotly.subplots import make_subplots
+from dash import dcc, html, Input, Output, callback, dash_table
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -43,40 +44,74 @@ class DashboardDataLoader:
         """Load data from a specific source directory"""
         data = {}
         
-        # Load season table
-        season_files = list(source_dir.glob("*season*.csv"))
-        if season_files:
-            df = pd.read_csv(season_files[0])
-            data['season'] = df
+        # Load season xP table
+        xp_files = list(source_dir.glob("*season_xp*.csv"))
+        if xp_files:
+            df = pd.read_csv(xp_files[0])
+            # Convert to expected format
+            season_df = self._convert_season_xp_to_table_format(df)
+            data['season'] = season_df
+            logger.info(f"Loaded season xP table with {len(season_df)} teams")
         
-        # Load individual spieltag files
-        spieltag_files = sorted([f for f in source_dir.glob("spieltag*.csv")])
-        data['spieltags'] = {}
-        
-        for file in spieltag_files:
-            try:
-                spieltag_num = int(file.stem.split('_')[1])
-                df = pd.read_csv(file)
-                data['spieltags'][spieltag_num] = df
-            except (ValueError, IndexError):
-                continue
+        # Load season xG table for additional metrics
+        xg_files = list(source_dir.glob("*season_xg*.csv"))
+        if xg_files:
+            xg_df = pd.read_csv(xg_files[0])
+            if 'season' in data:
+                data['season'] = self._merge_xg_data(data['season'], xg_df)
         
         return data
     
-    def get_available_teams(self):
-        """Get list of all available teams"""
-        teams = set()
-        for source_data in self.data.values():
-            if 'season' in source_data:
-                teams.update(source_data['season']['Team'].unique())
-        return sorted(teams)
+    def _convert_season_xp_to_table_format(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convert season xP table to dashboard format"""
+        if 'Total_xP' not in df.columns:
+            logger.warning("No Total_xP column found")
+            return df
+        
+        # Create the expected format
+        result_df = pd.DataFrame()
+        result_df['Team'] = df['Team']
+        result_df['xP'] = df['Total_xP']
+        
+        # Calculate matches played (count non-null spieltag columns)
+        spieltag_cols = [col for col in df.columns if col.startswith('spieltag-')]
+        result_df['Matches_Played'] = df[spieltag_cols].notna().sum(axis=1)
+        
+        # Add placeholder for actual points (would need to be loaded from actual results)
+        result_df['Actual_Points'] = result_df['xP']  # Placeholder - replace with actual data
+        
+        # Sort by xP descending
+        result_df = result_df.sort_values('xP', ascending=False).reset_index(drop=True)
+        result_df['Position'] = range(1, len(result_df) + 1)
+        
+        return result_df
     
-    def get_available_spieltags(self):
-        """Get list of available spieltags"""
-        spieltags = set()
-        for source_data in self.data.values():
-            spieltags.update(source_data.get('spieltags', {}).keys())
-        return sorted(spieltags)
+    def _merge_xg_data(self, season_df: pd.DataFrame, xg_df: pd.DataFrame) -> pd.DataFrame:
+        """Merge xG data into season dataframe"""
+        if 'Total_xG' not in xg_df.columns:
+            return season_df
+        
+        # Create temporary dataframe for merging
+        xg_summary = pd.DataFrame()
+        xg_summary['Team'] = xg_df['Team']
+        xg_summary['Total_xG'] = xg_df['Total_xG']
+        
+        # For goals for/against, we need to process match data
+        # For now, create placeholder values
+        xg_summary['xGF'] = xg_summary['Total_xG'] / 2  # Placeholder
+        xg_summary['xGA'] = xg_summary['Total_xG'] / 2  # Placeholder
+        xg_summary['xGD'] = xg_summary['xGF'] - xg_summary['xGA']
+        
+        # Merge with season data
+        season_df = season_df.merge(xg_summary[['Team', 'xGF', 'xGA', 'xGD']], 
+                                   on='Team', how='left')
+        
+        # Fill NaN values
+        season_df['xGF'] = season_df['xGF'].fillna(0)
+        season_df['xGA'] = season_df['xGA'].fillna(0)
+        season_df['xGD'] = season_df['xGD'].fillna(0)
+        
+        return season_df
 
 # Initialize data loader
 data_loader = DashboardDataLoader()
@@ -115,14 +150,6 @@ app.layout = dbc.Container([
                                 value=config.ENABLED_SOURCES[0] if config.ENABLED_SOURCES else None,
                                 clearable=False
                             )
-                        ], width=6),
-                        dbc.Col([
-                            html.Label("Compare Sources:"),
-                            dbc.Switch(
-                                id="compare-sources-switch",
-                                label="Enable",
-                                value=False
-                            )
                         ], width=6)
                     ])
                 ])
@@ -133,9 +160,7 @@ app.layout = dbc.Container([
     # Main content tabs
     dbc.Tabs([
         dbc.Tab(label="League Table", tab_id="league-table"),
-        dbc.Tab(label="Team Analysis", tab_id="team-analysis"),
         dbc.Tab(label="Performance Plots", tab_id="performance-plots"),
-        dbc.Tab(label="Source Comparison", tab_id="source-comparison"),
     ], id="main-tabs", active_tab="league-table"),
     
     html.Div(id="tab-content", className="mt-4"),
@@ -154,25 +179,20 @@ app.layout = dbc.Container([
 @callback(
     Output("tab-content", "children"),
     [Input("main-tabs", "active_tab"),
-     Input("source-dropdown", "value"),
-     Input("compare-sources-switch", "value")]
+     Input("source-dropdown", "value")]
 )
-def render_tab_content(active_tab, source, compare_sources):
+def render_tab_content(active_tab, source):
     if not source or source not in data_loader.data:
         return dbc.Alert("No data available. Run the pipeline first.", color="warning")
     
     if active_tab == "league-table":
-        return render_league_table(source, compare_sources)
-    elif active_tab == "team-analysis":
-        return render_team_analysis(source)
+        return render_league_table(source)
     elif active_tab == "performance-plots":
         return render_performance_plots(source)
-    elif active_tab == "source-comparison":
-        return render_source_comparison()
     
     return html.Div("Select a tab")
 
-def render_league_table(source, compare_sources):
+def render_league_table(source):
     """Render the league table tab"""
     source_data = data_loader.data.get(source, {})
     
@@ -181,27 +201,32 @@ def render_league_table(source, compare_sources):
     
     df = source_data['season'].copy()
     
+    # Calculate point difference if both xP and Actual_Points exist
+    if 'Actual_Points' in df.columns and 'xP' in df.columns:
+        df['Point_Difference'] = (df['xP'] - df['Actual_Points']).round(1)
+    else:
+        df['Point_Difference'] = 0.0
+    
     # Prepare table columns
     columns = [
         {"name": "Pos", "id": "Position", "type": "numeric"},
         {"name": "Team", "id": "Team"},
         {"name": "MP", "id": "Matches_Played", "type": "numeric"},
         {"name": "xP", "id": "xP", "type": "numeric", "format": {"specifier": ".1f"}},
-        {"name": "Actual P", "id": "Actual_Points", "type": "numeric"},
-        {"name": "Diff", "id": "Point_Difference", "type": "numeric", "format": {"specifier": "+.1f"}},
-        {"name": "xGF", "id": "xGF", "type": "numeric", "format": {"specifier": ".1f"}},
-        {"name": "xGA", "id": "xGA", "type": "numeric", "format": {"specifier": ".1f"}},
-        {"name": "xGD", "id": "xGD", "type": "numeric", "format": {"specifier": "+.1f"}},
     ]
     
-    # Add position indicators
-    if 'Position' not in df.columns:
-        df = df.sort_values('xP', ascending=False).reset_index(drop=True)
-        df['Position'] = range(1, len(df) + 1)
+    # Add actual points if available
+    if 'Actual_Points' in df.columns:
+        columns.append({"name": "Actual P", "id": "Actual_Points", "type": "numeric"})
+        columns.append({"name": "Diff", "id": "Point_Difference", "type": "numeric", "format": {"specifier": "+.1f"}})
     
-    # Calculate point difference
-    if 'Point_Difference' not in df.columns and 'Actual_Points' in df.columns:
-        df['Point_Difference'] = df['xP'] - df['Actual_Points']
+    # Add xG columns if available
+    if 'xGF' in df.columns:
+        columns.extend([
+            {"name": "xGF", "id": "xGF", "type": "numeric", "format": {"specifier": ".1f"}},
+            {"name": "xGA", "id": "xGA", "type": "numeric", "format": {"specifier": ".1f"}},
+            {"name": "xGD", "id": "xGD", "type": "numeric", "format": {"specifier": "+.1f"}},
+        ])
     
     # Style data conditionally
     style_data_conditional = [
@@ -223,17 +248,20 @@ def render_league_table(source, compare_sources):
             'backgroundColor': '#f8d7da',
             'color': 'black',
         },
-        # Positive point difference
-        {
-            'if': {'filter_query': '{Point_Difference} > 0'},
-            'color': 'green',
-        },
-        # Negative point difference
-        {
-            'if': {'filter_query': '{Point_Difference} < 0'},
-            'color': 'red',
-        }
     ]
+    
+    # Add point difference styling if available
+    if 'Point_Difference' in df.columns:
+        style_data_conditional.extend([
+            {
+                'if': {'filter_query': '{Point_Difference} > 0'},
+                'color': 'green',
+            },
+            {
+                'if': {'filter_query': '{Point_Difference} < 0'},
+                'color': 'red',
+            }
+        ])
     
     return dbc.Row([
         dbc.Col([
@@ -252,37 +280,10 @@ def render_league_table(source, compare_sources):
                     ),
                     html.Div([
                         html.Small([
-                            "🟢 Promotion • 🟡 Playoff • 🔴 Relegation • ",
-                            "Green: Overperforming xP • Red: Underperforming xP"
+                            "🟢 Promotion • 🟡 Playoff • 🔴 Relegation",
+                            " • Green: Overperforming xP • Red: Underperforming xP" if 'Point_Difference' in df.columns else ""
                         ], className="text-muted mt-2")
                     ])
-                ])
-            ])
-        ])
-    ])
-
-def render_team_analysis(source):
-    """Render team analysis tab"""
-    teams = data_loader.get_available_teams()
-    
-    return dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader([
-                    html.H4("Team Analysis")
-                ]),
-                dbc.CardBody([
-                    dbc.Row([
-                        dbc.Col([
-                            html.Label("Select Team:"),
-                            dcc.Dropdown(
-                                id='team-dropdown',
-                                options=[{'label': team, 'value': team} for team in teams],
-                                value=teams[0] if teams else None
-                            )
-                        ], width=6)
-                    ]),
-                    html.Div(id="team-analysis-content", className="mt-4")
                 ])
             ])
         ])
@@ -297,166 +298,50 @@ def render_performance_plots(source):
     
     df = source_data['season'].copy()
     
-    # Expected vs Actual Points scatter plot
-    fig_scatter = px.scatter(
-        df, x='xP', y='Actual_Points', 
-        hover_data=['Team'],
-        title=f"Expected vs Actual Points ({source.title()})",
-        labels={'xP': 'Expected Points', 'Actual_Points': 'Actual Points'}
-    )
+    plots = []
     
-    # Add diagonal line (perfect correlation)
-    min_val = min(df['xP'].min(), df['Actual_Points'].min())
-    max_val = max(df['xP'].max(), df['Actual_Points'].max())
-    fig_scatter.add_shape(
-        type="line", line=dict(dash="dash"),
-        x0=min_val, y0=min_val, x1=max_val, y1=max_val
-    )
-    
-    # xG vs xGA scatter plot
-    fig_xg_scatter = px.scatter(
-        df, x='xGA', y='xGF',
-        hover_data=['Team'],
-        title=f"Expected Goals For vs Against ({source.title()})",
-        labels={'xGF': 'Expected Goals For', 'xGA': 'Expected Goals Against'}
-    )
-    
-    return dbc.Row([
-        dbc.Col([
-            dcc.Graph(figure=fig_scatter)
-        ], width=6),
-        dbc.Col([
-            dcc.Graph(figure=fig_xg_scatter)
-        ], width=6)
-    ])
-
-def render_source_comparison():
-    """Render source comparison tab"""
-    if len(config.ENABLED_SOURCES) < 2:
-        return dbc.Alert("Need at least 2 data sources for comparison", color="info")
-    
-    # Compare season data between sources
-    comparison_data = []
-    
-    for source in config.ENABLED_SOURCES:
-        source_data = data_loader.data.get(source, {})
-        if 'season' in source_data:
-            df = source_data['season'].copy()
-            df['Source'] = source.title()
-            comparison_data.append(df)
-    
-    if not comparison_data:
-        return dbc.Alert("No comparable data available", color="warning")
-    
-    # Combine data
-    combined_df = pd.concat(comparison_data, ignore_index=True)
-    
-    # Create comparison plot
-    fig = px.box(
-        combined_df, x='Source', y='xP',
-        title="xP Distribution by Source",
-        points="all"
-    )
-    
-    return dbc.Row([
-        dbc.Col([
-            dcc.Graph(figure=fig)
-        ])
-    ])
-
-# Team analysis callback
-@callback(
-    Output("team-analysis-content", "children"),
-    [Input("team-dropdown", "value"),
-     Input("source-dropdown", "value")]
-)
-def update_team_analysis(selected_team, source):
-    if not selected_team or not source:
-        return "Select a team to analyze"
-    
-    source_data = data_loader.data.get(source, {})
-    spieltags = source_data.get('spieltags', {})
-    
-    if not spieltags:
-        return dbc.Alert("No match data available", color="warning")
-    
-    # Collect team data across spieltags
-    team_data = []
-    for spieltag_num, df in spieltags.items():
-        team_matches = df[
-            (df['Home_Team'] == selected_team) | 
-            (df['Away_Team'] == selected_team)
-        ].copy()
+    # Expected vs Actual Points scatter plot (if actual points available)
+    if 'Actual_Points' in df.columns:
+        fig_scatter = px.scatter(
+            df, x='xP', y='Actual_Points', 
+            hover_data=['Team'],
+            title=f"Expected vs Actual Points ({source.title()})",
+            labels={'xP': 'Expected Points', 'Actual_Points': 'Actual Points'}
+        )
         
-        for _, match in team_matches.iterrows():
-            if match['Home_Team'] == selected_team:
-                team_data.append({
-                    'Spieltag': spieltag_num,
-                    'Opponent': match['Away_Team'],
-                    'Home': True,
-                    'xG_For': match.get('Home_xG', 0),
-                    'xG_Against': match.get('Away_xG', 0),
-                    'xP': match.get('Home_xP', 0)
-                })
-            else:
-                team_data.append({
-                    'Spieltag': spieltag_num,
-                    'Opponent': match['Home_Team'],
-                    'Home': False,
-                    'xG_For': match.get('Away_xG', 0),
-                    'xG_Against': match.get('Home_xG', 0),
-                    'xP': match.get('Away_xP', 0)
-                })
+        # Add diagonal line (perfect correlation)
+        min_val = min(df['xP'].min(), df['Actual_Points'].min())
+        max_val = max(df['xP'].max(), df['Actual_Points'].max())
+        fig_scatter.add_shape(
+            type="line", line=dict(dash="dash"),
+            x0=min_val, y0=min_val, x1=max_val, y1=max_val
+        )
+        
+        plots.append(dbc.Col([dcc.Graph(figure=fig_scatter)], width=6))
     
-    if not team_data:
-        return dbc.Alert(f"No data found for {selected_team}", color="warning")
+    # xG vs xGA scatter plot (if xG data available)
+    if 'xGF' in df.columns and 'xGA' in df.columns:
+        fig_xg_scatter = px.scatter(
+            df, x='xGA', y='xGF',
+            hover_data=['Team'],
+            title=f"Expected Goals For vs Against ({source.title()})",
+            labels={'xGF': 'Expected Goals For', 'xGA': 'Expected Goals Against'}
+        )
+        
+        plots.append(dbc.Col([dcc.Graph(figure=fig_xg_scatter)], width=6))
     
-    team_df = pd.DataFrame(team_data).sort_values('Spieltag')
-    
-    # Create cumulative xP chart
-    team_df['Cumulative_xP'] = team_df['xP'].cumsum()
-    
-    fig_cumulative = px.line(
-        team_df, x='Spieltag', y='Cumulative_xP',
-        title=f"{selected_team} - Cumulative Expected Points",
-        markers=True
+    # xP distribution
+    fig_xp_dist = px.histogram(
+        df, x='xP',
+        title=f"Expected Points Distribution ({source.title()})",
+        labels={'xP': 'Expected Points'}
     )
+    plots.append(dbc.Col([dcc.Graph(figure=fig_xp_dist)], width=6))
     
-    # Create xG chart
-    fig_xg = go.Figure()
-    fig_xg.add_trace(go.Bar(
-        x=team_df['Spieltag'],
-        y=team_df['xG_For'],
-        name='xG For',
-        marker_color='green'
-    ))
-    fig_xg.add_trace(go.Bar(
-        x=team_df['Spieltag'],
-        y=-team_df['xG_Against'],  # Negative for visual separation
-        name='xG Against',
-        marker_color='red'
-    ))
-    fig_xg.update_layout(
-        title=f"{selected_team} - Expected Goals by Match",
-        yaxis_title="Expected Goals",
-        barmode='overlay'
-    )
+    if not plots:
+        return dbc.Alert("No data available for performance plots", color="warning")
     
-    return dbc.Row([
-        dbc.Col([
-            dcc.Graph(figure=fig_cumulative)
-        ], width=6),
-        dbc.Col([
-            dcc.Graph(figure=fig_xg)
-        ], width=6),
-        dbc.Col([
-            html.H5("Season Summary"),
-            html.P(f"Total xP: {team_df['xP'].sum():.1f}"),
-            html.P(f"Average xG For: {team_df['xG_For'].mean():.1f}"),
-            html.P(f"Average xG Against: {team_df['xG_Against'].mean():.1f}"),
-            html.P(f"Matches Played: {len(team_df)}")
-        ], width=12, className="mt-4")
-    ])
+    return dbc.Row(plots)
 
 # Dashboard class for external usage
 class Dashboard:
