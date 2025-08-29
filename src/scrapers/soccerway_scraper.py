@@ -5,6 +5,8 @@ Soccerway fixtures and xG scraper with improved error handling
 import re
 import time
 import random
+import chromedriver_autoinstaller
+from datetime import datetime
 from typing import Dict, List, Any, Optional
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -12,7 +14,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException
-import chromedriver_autoinstaller
 
 from ..utils.scraper_base import BaseScraper
 from ..utils.config import config
@@ -41,7 +42,6 @@ class SoccerwayFixturesScraper(BaseScraper):
         spieltag_map = getattr(config, 'SPIELTAG_MAP', {})
         if target_spieltag in spieltag_map:
             date_str = spieltag_map[target_spieltag][1]
-            from datetime import datetime
             match_datetime = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
             now = datetime.now()
             if match_datetime > now:
@@ -207,8 +207,8 @@ class SoccerwayFixturesScraper(BaseScraper):
     
                     fixtures.append({  
                         "spieltag": target_spieltag,  
-                        "home": home_team,  
-                        "away": away_team,  
+                        "home_team": home_team,  
+                        "away_team": away_team,  
                         "score_home": score_home,  
                         "score_away": score_away,  
                         "url": link  
