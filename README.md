@@ -97,32 +97,8 @@ python main.py run
 # Process specific spieltag only
 python main.py run --spieltag 3
 
-# Process only FootyStats data
-python main.py run --sources footystats
-
-# Individual operations
-python main.py scrape fixtures --source footystats --spieltag 5
-python main.py scrape xg --source soccerway --spieltag 5
-python main.py calculate xp --source footystats
-python main.py calculate season
-
 # Start dashboard with custom settings
 python main.py dashboard --port 8080 --debug
-```
-
-### Python API
-
-```python
-from src.scrapers.footystats_scraper import FootyStatsScraper
-from src.calculators.xp_calculator import XPCalculator
-
-# Scrape fixtures
-scraper = FootyStatsScraper()
-fixtures = scraper.scrape_fixtures(target_spieltag=5)
-
-# Calculate xP
-calculator = XPCalculator()
-xp_home, xp_away = calculator.compute_xp(xg_home=1.5, xg_away=0.8)
 ```
 
 ## Configuration

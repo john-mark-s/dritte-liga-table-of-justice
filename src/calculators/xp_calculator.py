@@ -7,6 +7,7 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, Tuple, Optional, List
 from scipy.stats import poisson
+import re
 
 from ..utils.config import config
 from ..utils.logger import get_logger
@@ -113,16 +114,17 @@ class XPCalculator:
             
             df = pd.read_csv(file_path)
             
-            # Check for required columns
-            required_cols = {'home_xG', 'away_xG'}
-            if not required_cols.issubset(df.columns):
-                self.logger.warning(f"⚠️ Missing required columns: {required_cols - set(df.columns)}")
+            # Check for required columns (try different naming conventions)
+            xg_columns = self._find_xg_columns(df.columns)
+            if not xg_columns:
+                self.logger.warning(f"⚠️ No xG columns found in {file_path.name}")
                 return None
             
+            home_xg_col, away_xg_col = xg_columns
+            
             # Skip if already processed
-            if {'home_xP', 'away_xP'}.issubset(df.columns):
-                self.logger.info(f"ℹ️ File already has xP columns, skipping")
-                return df
+            if 'home_xP' in df.columns and 'away_xP' in df.columns:
+                self.logger.info(f"ℹ️ File already has xP columns, updating")
             
             # Add new columns
             df['home_xP'] = 0.0
@@ -133,8 +135,8 @@ class XPCalculator:
             
             # Calculate xP for each match
             for idx, row in df.iterrows():
-                home_xg = row['home_xG']
-                away_xg = row['away_xG']
+                home_xg = row[home_xg_col]
+                away_xg = row[away_xg_col]
                 
                 # Calculate xP
                 home_xp, away_xp = self.compute_xp(home_xg, away_xg)
@@ -154,6 +156,25 @@ class XPCalculator:
             self.logger.error(f"❌ Error processing {file_path}: {e}")
             return None
     
+    def _find_xg_columns(self, columns) -> Optional[Tuple[str, str]]:
+        """Find xG columns with flexible naming"""
+        home_xg_candidates = ['home_xG', 'Home_xG', 'xG_home', 'xg_home']
+        away_xg_candidates = ['away_xG', 'Away_xG', 'xG_away', 'xg_away']
+        
+        home_xg_col = None
+        away_xg_col = None
+        
+        for col in columns:
+            if col in home_xg_candidates:
+                home_xg_col = col
+            elif col in away_xg_candidates:
+                away_xg_col = col
+        
+        if home_xg_col and away_xg_col:
+            return home_xg_col, away_xg_col
+        
+        return None
+    
     def batch_process_directory(self, directory: Path) -> None:
         """
         Process all CSV files in a directory that have xG data
@@ -168,9 +189,12 @@ class XPCalculator:
         self.logger.info(f"🔄 Batch processing directory: {directory}")
         
         # Find CSV files with xG data
-        csv_files = list(directory.glob("*_xg.csv"))
-        if not csv_files:
-            csv_files = [f for f in directory.glob("*.csv") if self._has_xg_data(f)]
+        csv_files = []
+        for pattern in ["*xg*.csv", "*spieltag*.csv", "*.csv"]:
+            potential_files = list(directory.glob(pattern))
+            for f in potential_files:
+                if self._has_xg_data(f) and f not in csv_files:
+                    csv_files.append(f)
         
         if not csv_files:
             self.logger.warning(f"⚠️ No CSV files with xG data found in {directory}")
@@ -181,8 +205,12 @@ class XPCalculator:
             df = self.process_matches_file(csv_file)
             
             if df is not None:
-                # Save with xP suffix
-                output_file = csv_file.parent / f"{csv_file.stem}_xp.csv"
+                # Create output filename
+                if "_xp" not in csv_file.stem:
+                    output_file = csv_file.parent / f"{csv_file.stem}_xp.csv"
+                else:
+                    output_file = csv_file  # Overwrite if already has _xp suffix
+                
                 try:
                     df.to_csv(output_file, index=False)
                     self.logger.info(f"💾 Saved: {output_file.name}")
@@ -196,7 +224,8 @@ class XPCalculator:
         """Check if CSV file has xG data"""
         try:
             df = pd.read_csv(file_path, nrows=1)  # Just read header
-            return {'home_xG', 'away_xG'}.issubset(df.columns)
+            xg_columns = self._find_xg_columns(df.columns)
+            return xg_columns is not None
         except:
             return False
 
@@ -220,12 +249,16 @@ class SeasonXPProcessor:
         """
         self.logger.info(f"📊 Creating season {metric} table from {directory}")
         
-        # Find relevant files
-        pattern = f"*_{metric.lower()}.csv"
-        files = list(directory.glob(pattern))
+        # Find relevant files - look for files with xp suffix
+        files = list(directory.glob("*xp.csv"))
         
         if not files:
-            self.logger.warning(f"⚠️ No {pattern} files found in {directory}")
+            # Fallback: look for any CSV files with required data
+            all_files = list(directory.glob("*.csv"))
+            files = [f for f in all_files if self._has_required_columns(f, metric)]
+        
+        if not files:
+            self.logger.warning(f"⚠️ No files with {metric} data found in {directory}")
             return None
         
         spieltag_data = {}
@@ -259,32 +292,107 @@ class SeasonXPProcessor:
         self.logger.info(f"✅ Created season {metric} table: {season_df.shape[0]} teams, {len(spieltag_data)} spieltags")
         return season_df
     
+    def _has_required_columns(self, file_path: Path, metric: str) -> bool:
+        """Check if file has required columns for the metric"""
+        try:
+            df = pd.read_csv(file_path, nrows=1)
+            if metric == 'xP':
+                return any(col in df.columns for col in ['home_xP', 'away_xP'])
+            elif metric == 'xG':
+                return any(col in df.columns for col in ['home_xG', 'away_xG', 'Home_xG', 'Away_xG'])
+            return False
+        except:
+            return False
+    
     def _extract_spieltag_from_filename(self, filename: str) -> Optional[int]:
-        """Extract spieltag number from filename"""
-        import re
-        match = re.search(r'spieltag-(\d+)', filename)
-        return int(match.group(1)) if match else None
+        """Extract spieltag number from filename with flexible patterns"""
+        patterns = [
+            r'spieltag[-_](\d+)',  # spieltag-1 or spieltag_1
+            r'(\d+)[-_]spieltag',  # 1-spieltag or 1_spieltag
+            r'round[-_](\d+)',     # round-1 or round_1
+            r'matchday[-_](\d+)',  # matchday-1 or matchday_1
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, filename.lower())
+            if match:
+                return int(match.group(1))
+        
+        return None
     
     def _extract_team_values(self, df: pd.DataFrame, metric: str) -> Dict[str, float]:
-        """Extract team values from match DataFrame"""
+        """Extract team values from match DataFrame with flexible column names"""
         team_values = {}
-        home_col = f'home_{metric}'
-        away_col = f'away_{metric}'
         
-        if home_col not in df.columns or away_col not in df.columns:
+        # Find team name columns
+        team_cols = self._find_team_columns(df.columns)
+        if not team_cols:
             return team_values
         
+        home_team_col, away_team_col = team_cols
+        
+        # Find metric columns
+        metric_cols = self._find_metric_columns(df.columns, metric)
+        if not metric_cols:
+            return team_values
+        
+        home_metric_col, away_metric_col = metric_cols
+        
         for _, row in df.iterrows():
-            home_team = row.get('home_team')
-            away_team = row.get('away_team')
-            home_value = row.get(home_col)
-            away_value = row.get(away_col)
+            home_team = row.get(home_team_col)
+            away_team = row.get(away_team_col)
+            home_value = row.get(home_metric_col)
+            away_value = row.get(away_metric_col)
             
             if all(pd.notna([home_team, away_team, home_value, away_value])):
                 team_values[home_team] = float(home_value)
                 team_values[away_team] = float(away_value)
         
         return team_values
+    
+    def _find_team_columns(self, columns) -> Optional[Tuple[str, str]]:
+        """Find team name columns"""
+        home_candidates = ['home_team', 'Home_Team', 'HomeTeam', 'home']
+        away_candidates = ['away_team', 'Away_Team', 'AwayTeam', 'away']
+        
+        home_col = None
+        away_col = None
+        
+        for col in columns:
+            if col in home_candidates:
+                home_col = col
+            elif col in away_candidates:
+                away_col = col
+        
+        if home_col and away_col:
+            return home_col, away_col
+        
+        return None
+    
+    def _find_metric_columns(self, columns, metric: str) -> Optional[Tuple[str, str]]:
+        """Find metric columns"""
+        if metric == 'xP':
+            home_candidates = ['home_xP', 'Home_xP', 'xP_home']
+            away_candidates = ['away_xP', 'Away_xP', 'xP_away']
+        elif metric == 'xG':
+            home_candidates = ['home_xG', 'Home_xG', 'xG_home']
+            away_candidates = ['away_xG', 'Away_xG', 'xG_away']
+        else:
+            return None
+        
+        home_col = None
+        away_col = None
+        
+        for col in columns:
+            if col in home_candidates:
+                home_col = col
+            elif col in away_candidates:
+                away_col = col
+        
+        if home_col and away_col:
+            return home_col, away_col
+        
+        return None
     
     def _build_season_dataframe(self, spieltag_data: Dict[int, Dict[str, float]], 
                                teams: List[str], metric: str) -> pd.DataFrame:
@@ -319,10 +427,7 @@ class SeasonXPProcessor:
     def save_season_table(self, df: pd.DataFrame, directory: Path, metric: str) -> bool:
         """Save season table to CSV"""
         try:
-            filename = config.get_output_filename(
-                f'season_{metric.lower()}', 
-                source=directory.name
-            )
+            filename = f"season_{metric.lower()}.csv"
             output_path = directory / filename
             
             df.to_csv(output_path, index=False)
