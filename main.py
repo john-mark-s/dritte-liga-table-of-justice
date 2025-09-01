@@ -7,13 +7,14 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / 'src'))
-
 from src.automation import WeeklyUpdateManager
 from src.dashboard.app import dashboard
 from src.utils.config import config
 from src.utils.logger import get_logger
+from src.calculators.standings_calculator import GenerateClassicStandings  
+
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 def main():
     """Main CLI interface"""
@@ -27,6 +28,8 @@ Examples:
   python main.py dashboard              # Start dashboard
   python main.py dashboard --port 8080  # Start dashboard on different port
   python main.py setup                  # Setup directories and config
+  python main.py standings              # Calculate classic standings  
+
         """
     )
     
@@ -68,6 +71,11 @@ Examples:
     calc_parser.add_argument('--source', choices=['footystats', 'soccerway'],
                             help='Specific source (optional)')
     
+    # Standings command  
+    standings_parser = subparsers.add_parser('standings', help='Calculate classic league standings')  
+    standings_parser.add_argument('--csv-folder', type=str, default=config.SOCCERWAY_DIR,  
+                                  help='CSV folder for standings calculation')  
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -91,6 +99,9 @@ Examples:
         
         elif args.command == 'calculate':
             run_calculation(args)
+            
+        elif args.command == 'standings':  
+            calculate_standings(args)
         
     except KeyboardInterrupt:
         logger.info("⏹️ Operation cancelled by user")
@@ -246,6 +257,20 @@ def run_calculation(args):
     
     logger.info("✅ Calculation completed successfully!")
 
+
+def calculate_standings(args):  
+    """Calculate classic league standings"""  
+    logger = get_logger('standings')  
+    source_dir = config.SOCCERWAY_DIR  
+    csv_folder = source_dir
+  
+    try:  
+        logger.info(f"📊 Calculating classic standings from {csv_folder}")  
+        GenerateClassicStandings().calculate_classic_standings(csv_folder)  
+        logger.info("✅ Classic standings calculation completed successfully!")  
+    except Exception as e:  
+        logger.error(f"❌ Error calculating classic standings: {e}")  
+        sys.exit(1)  
 
 if __name__ == "__main__":
     main()
