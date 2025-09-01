@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, Any
 from .scrapers.footystats_scraper import FootyStatsScraper, FootyStatsXGScraper
 from .scrapers.soccerway_scraper import SoccerwayFixturesScraper, SoccerwayXGScraper
 from .calculators.xp_calculator import XPCalculator, SeasonXPProcessor
+from .calculators.standings_calculator import GenerateClassicStandings
 from .utils.config import config
 from .utils.logger import get_logger
 
@@ -29,6 +30,7 @@ class WeeklyUpdateManager:
         self.sw_xg_scraper = SoccerwayXGScraper()
         self.xp_calculator = XPCalculator()
         self.season_processor = SeasonXPProcessor()
+        self.standard_standings = GenerateClassicStandings
         
         # Ensure directories exist
         config.ensure_directories()
@@ -288,6 +290,20 @@ class WeeklyUpdateManager:
         
         return success
     
+    def step5_create_standard_standings(self) -> bool:  
+        self.logger.info("STEP 5: Creating standard league standings")  
+        success = False  
+    
+        source_dir = config.SOCCERWAY_DIR  
+        try:  
+            # Call the method and let it determine the latest spieltag  
+            self.standard_standings.calculate_classic_standings(source_dir)  
+            success = True  
+        except Exception as e:  
+            self.logger.error(f"❌ Error creating standard standings for {source_dir}: {e}")  
+        
+        return success
+
     def run_pipeline_for_spieltag(self, spieltag: int) -> bool:
         """
         Run the complete pipeline for a specific spieltag
@@ -304,6 +320,7 @@ class WeeklyUpdateManager:
             ("Scrape Fixtures", lambda: self.step1_scrape_fixtures(spieltag)),
             ("Scrape xG", lambda: self.step2_scrape_xg(spieltag)),
             ("Calculate xP", lambda: self.step3_calculate_xp(spieltag)),
+            ("Create Standard Standings", self.step5_create_standard_standings)
         ]
         
         for step_name, step_func in steps:
