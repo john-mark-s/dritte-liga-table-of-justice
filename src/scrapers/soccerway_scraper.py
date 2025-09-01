@@ -3,9 +3,11 @@ Soccerway fixtures and xG scraper with improved error handling
 """
 
 import re
+import csv
 import time
 import random
 import chromedriver_autoinstaller
+from bs4 import BeautifulSoup
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from selenium import webdriver
@@ -60,11 +62,12 @@ class SoccerwayFixturesScraper(BaseScraper):
             # Select the correct Spielwoche from dropdown
             self._select_spielwoche(driver, target_spieltag)
 
-            self._load_previous_matches(driver)
+            # self._load_previous_matches(driver)
             fixtures = self._extract_fixtures(driver, target_spieltag)
             fixtures = self.normalize_team_names(fixtures)
             self.logger.info(f"✅ Scraped {len(fixtures)} fixtures for Spieltag {target_spieltag}")
             return fixtures
+        
         except Exception as e:
             self.logger.error(f"❌ Error scraping Soccerway: {e}")
             return []
@@ -77,23 +80,24 @@ class SoccerwayFixturesScraper(BaseScraper):
     def _select_spielwoche(self, driver, target_spieltag: int) -> None:  
         """Select the correct Spielwoche/Game week/Spieltag from the picker."""  
         try:  
-            # Open the dropdown  
+            self.logger.debug("Attempting to open game week dropdown")  
             dropdown_button = WebDriverWait(driver, 10).until(  
                 EC.element_to_be_clickable((By.ID, "unique_flyout_transfer_custom_week_button"))  
             )  
             dropdown_button.click()  
-            self.logger.info("✅ Opened Game week dropdown")  
-    
-            # Select the target Game week  
+            self.logger.info("✅ Opened Game week dropdown")
+            driver.save_screenshot('data/soccerway/opened_game_week_dropdown.png')  
+            
+            self.logger.debug(f"Attempting to select Game week {target_spieltag}")  
             option_xpath = f"//div[@id='dropdown_picker_unique_flyout_transfer_custom_week_button']//div[span//span[contains(text(), 'Game week {target_spieltag}')]]"  
             option = WebDriverWait(driver, 10).until(  
                 EC.element_to_be_clickable((By.XPATH, option_xpath))  
             )  
             option.click()  
-            self.logger.info(f"✅ Selected Game week {target_spieltag}")  
+            self.logger.info(f"✅ Selected Game week {target_spieltag}")
+            driver.save_screenshot(f'data/soccerway/selected_game_week{target_spieltag}.png')
             
             time.sleep(6)  # Wait for the page to update  
-    
         except Exception as e:  
             self.logger.warning(f"⚠️ Error selecting Spielwoche: {e}")  
     
@@ -123,7 +127,7 @@ class SoccerwayFixturesScraper(BaseScraper):
     def _handle_consent_popup(self, driver) -> None:
         """Handle consent popup if present"""
         try:
-            consent_button = WebDriverWait(driver, 10).until(
+            consent_button = WebDriverWait(driver, 15).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 
                     "button.fc-button.fc-cta-consent.fc-primary-button"))
             )
@@ -135,153 +139,113 @@ class SoccerwayFixturesScraper(BaseScraper):
         except Exception as e:
             self.logger.warning(f"⚠️ Error handling consent: {e}")
     
-    def _load_previous_matches(self, driver) -> None:
-        """Click load previous button if available"""
-        try:
-            button = WebDriverWait(driver, 15).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 
-                    "button.sc-41ba8c7a-0.dGqIGb.undefined"))
-            )
-            button.click()
-            self.logger.debug("✅ Clicked load previous button")
-            time.sleep(3)
-        except TimeoutException:
-            self.logger.debug("ℹ️ No load previous button found")
-        except Exception as e:
-            self.logger.warning(f"⚠️ Error clicking load previous: {e}")
-    
-    def _extract_fixtures(self, driver, target_spieltag: int) -> List[Dict[str, Any]]:
-        """Extract fixtures from the page"""
-        fixtures = []
+    def _extract_fixtures(self, driver, target_spieltag: int) -> List[Dict[str, Any]]:  
+        """Extract fixtures from the page"""  
+        fixtures = []  
         
-        try:
-            fixture_divs = driver.find_elements(By.CSS_SELECTOR, "div.sc-4e66d108-3")  
-            for fixture in fixture_divs:
-                
-                try:
-                    # Match URL
-                    link = fixture.find_element(By.TAG_NAME, "a").get_attribute("href")  
-                    
-                    # Teams
-                    team_spans = fixture.find_elements(By.XPATH, ".//span[contains(@class, 'label') and contains(@class, 'dDQFLa')]")  
-                    team_names = [t.text.strip() for t in team_spans if t.text.strip()]  
-                
-                    if len(team_names) < 2:  
-                        name_spans = fixture.find_elements(By.XPATH, ".//div[contains(@class, 'label')]//span[@class='name']")  
-                        team_names = [n.text.strip() for n in name_spans if n.text.strip()]  
+        try:  
+            # Save the entire page source to a file for debugging  
+            page_source = driver.page_source
 
-                    # Try to extract team names using multiple strategies
-                    team_names = []
-                    
-                                    # 1. All <span> with class 'label' inside the fixture, but not 'score'
-                    label_spans = fixture.find_elements(By.XPATH, ".//span[contains(@class, 'label') and not(contains(@class, 'score'))]")
-                    for span in label_spans:
-                        txt = span.text.strip()
-                        # Filter out empty, odds, dates, and other non-team labels
-                        if txt and re.match(r"^[A-Za-z0-9ÄÖÜäöüß \-\.]+$", txt) and len(txt) > 2:
-                            team_names.append(txt)
-
-                    # 2. If not found, look for <span class="name">
-                    if len(team_names) < 2:
-                        name_spans = fixture.find_elements(By.XPATH, ".//span[@class='name']")
-                        for n in name_spans:
-                            txt = n.text.strip()
-                            if txt and len(txt) > 2:
-                                team_names.append(txt)
-
-                    # Remove duplicates
-                    team_names = list(dict.fromkeys(team_names))
-                    
-                    
-                    if len(team_names) < 2:  
-                        continue  
-  
-                    home_team = team_names[0]  
-                    away_team = team_names[1]
-                    
-                    score_spans = fixture.find_elements(By.XPATH, ".//span[contains(@class, 'label') and contains(@class, 'score') and string-length(normalize-space(text())) > 0]")  
-                    score_texts = [s.text.strip() for s in score_spans if s.text.strip().isdigit()]  
+            html_path = f"data/soccerway/soccerway_spieltag_{target_spieltag}_page.html"
+            with open(html_path, "w", encoding="utf-8") as file:  
+                file.write(page_source)  
+            self.logger.info(f"Page source saved to soccerway_spieltag_{target_spieltag}_page.html")  
     
-                    score_home = score_texts[0] if len(score_texts) > 0 else None  
-                    score_away = score_texts[1] if len(score_texts) > 1 else None  
-    
-                    fixtures.append({  
-                        "spieltag": target_spieltag,  
-                        "home_team": home_team,  
-                        "away_team": away_team,  
-                        "score_home": score_home,  
-                        "score_away": score_away,  
-                        "url": link  
-                    })  
-                    
-                except Exception as e:  
-                    self.logger.warning(f"⚠️ Skipped fixture: {e}")                    
+            html_content = page_source
+            print(f"Soccerway Spieltag {target_spieltag} stored")
+
+            soup = BeautifulSoup(html_content, 'html.parser')
+            fixtures = []
             
-        except Exception as e:
-            self.logger.error(f"❌ Error extracting fixtures: {e}")
+            # Find all fixture containers
+            fixture_containers = soup.find_all('div', class_='sc-f6b773a5-3')
             
-        return fixtures
-    
-    def _parse_fixture_text(self, text: str, gameweek: str, url: str) -> Optional[Dict[str, Any]]:
-        """Parse fixture text into structured data - robust team/score extraction"""
-        try:
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            self.logger.debug(f"Parsing fixture text lines: {lines}")
-
-            # Separate team names (non-numeric) and scores (numeric)
-            team_names = [line for line in lines if not line.isdigit()]
-            scores = [line for line in lines if line.isdigit()]
-
-            self.logger.debug(f"Extracted team names: {team_names}")
-            self.logger.debug(f"Extracted scores: {scores}")
-
-            if len(team_names) < 2 or len(scores) < 2:
-                self.logger.warning(f"⚠️ Could not find two team names and two scores in: {text}")
-                return None
-
-            team1 = team_names[0]
-            team2 = team_names[1]
-            score1 = scores[0]
-            score2 = scores[1]
-
-            self.logger.debug(f"Parsed teams: team1='{team1}', team2='{team2}', scores: {score1}-{score2}")
-
-            # Find betting odds (should be 3 decimal numbers after scores)
-            bet_lines = []
-            for line in lines:
+            for container in fixture_containers:
                 try:
-                    val = float(line)
-                    # Only add if not already in scores (to avoid adding scores as odds)
-                    if line not in scores:
-                        bet_lines.append(line)
-                    if len(bet_lines) == 3:
-                        break
-                except ValueError:
+                    fixture_data = {}
+                    
+                    # Extract URL
+                    url_link = container.find('a', class_='sc-22ef6ec-0 sc-f6b773a5-2 boVFdS ZfONG')
+
+                    if url_link and url_link.get('href'):
+                        fixture_data['url'] = url_link['href']
+                        fixture_data['url'] = self.base_url + fixture_data['url']
+                        print(f"Fixture URL found: {fixture_data['url']}")
+                    else:
+                        continue  # Skip if no URL found
+                    
+                    # Extract team names
+                    team_container = container.find('span', class_='sc-1718759c-5 hCWYeZ')
+
+                    if team_container:
+                        team_spans = team_container.find_all('span', class_='sc-1718759c-0 hCWqQ')
+                        if len(team_spans) >= 2:
+                            # First team is home, second is away
+                            home_team_elem = team_spans[0].find('span', class_=re.compile(r'sc-1718759c-3'))
+                            away_team_elem = team_spans[1].find('span', class_=re.compile(r'sc-1718759c-3'))
+                            
+                            if home_team_elem and away_team_elem:
+                                fixture_data['home_team'] = home_team_elem.get_text(strip=True)
+                                fixture_data['away_team'] = away_team_elem.get_text(strip=True)
+                            else:
+                                continue  # Skip if team names not found
+                        else:
+                            continue  # Skip if not enough team containers
+                    else:
+                        continue  # Skip if no team container found
+                    
+                    # Extract scores
+                    score_container = container.find('span', class_='sc-cc2791f0-1 fflVkg')
+                    if score_container:
+                        score_divs = score_container.find_all('div', class_='sc-cc2791f0-0 hyvmlQ default')
+                        if len(score_divs) >= 2:
+                            # First score is home, second is away
+                            home_score_elem = score_divs[0].find('span', class_='sc-4e4c9eab-2 jnsOHd label score')
+                            away_score_elem = score_divs[1].find('span', class_='sc-4e4c9eab-2 jnsOHd label score')
+                            
+                            if home_score_elem and away_score_elem:
+                                try:
+                                    fixture_data['home_goals'] = int(home_score_elem.get_text(strip=True))
+                                    fixture_data['away_goals'] = int(away_score_elem.get_text(strip=True))
+                                except ValueError:
+                                    # If scores can't be converted to int, set as None (match not played yet)
+                                    fixture_data['home_goals'] = None
+                                    fixture_data['away_goals'] = None
+                            else:
+                                fixture_data['home_goals'] = None
+                                fixture_data['away_goals'] = None
+                        else:
+                            fixture_data['home_goals'] = None
+                            fixture_data['away_goals'] = None
+                    else:
+                        fixture_data['home_goals'] = None
+                        fixture_data['away_goals'] = None
+                    
+                    fixtures.append(fixture_data)
+                    
+                except Exception as e:
+                    # Skip problematic fixtures and continue
+                    print(f"Error processing fixture: {e}")
                     continue
+        
+            output_file = f"inside_function_soccerway_3liga-fixtures_spieltag-{target_spieltag}.csv"
+            
+            fieldnames = ['home_team', 'away_team', 'home_goals', 'away_goals', 'url']
+    
+            with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(fixtures)
+            
+            print(f"Saved {len(fixtures)} fixtures to {output_file}")
 
-            self.logger.debug(f"Betting odds found: {bet_lines}")
+            return fixtures
 
-            if len(bet_lines) < 3:
-                self.logger.warning(f"⚠️ Could not find 3 betting odds in: {text}")
-                return None
-
-            return {
-                "gameweek": gameweek,
-                "home_team": team1,
-                "away_team": team2,
-                "home_goals": score1,
-                "away_goals": score2,
-                "bet1": bet_lines[0],
-                "bet2": bet_lines[1],
-                "bet3": bet_lines[2],
-                "url": url
-            }
-
-        except Exception as e:
-            self.logger.error(f"❌ Error parsing fixture text: {e}")
-            return None
-
-
+        except Exception as e:  
+            self.logger.error(f"❌ Error extracting fixtures: {e}")  
+            return []
+    
 class SoccerwayXGScraper:
     """Scraper for xG data from Soccerway match pages"""
     
@@ -368,6 +332,7 @@ class SoccerwayXGScraper:
                 "button.fc-button.fc-cta-consent.fc-primary-button")
             btn.click()
             self.logger.debug("✅ Clicked consent button")
+            driver.save_screenshot('data/soccerway/clicked_consent_button.png')  
             time.sleep(0.8)
             
         except TimeoutException:
