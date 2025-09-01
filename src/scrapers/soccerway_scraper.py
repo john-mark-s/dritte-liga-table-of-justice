@@ -165,15 +165,7 @@ class SoccerwayFixturesScraper(BaseScraper):
                 try:
                     fixture_data = {}
                     
-                    # Extract URL
-                    url_link = container.find('a', class_='sc-22ef6ec-0 sc-f6b773a5-2 boVFdS ZfONG')
-
-                    if url_link and url_link.get('href'):
-                        fixture_data['url'] = url_link['href']
-                        fixture_data['url'] = self.base_url + fixture_data['url']
-                        print(f"Fixture URL found: {fixture_data['url']}")
-                    else:
-                        continue  # Skip if no URL found
+                    fixture_data['spieltag'] = target_spieltag
                     
                     # Extract team names
                     team_container = container.find('span', class_='sc-1718759c-5 hCWYeZ')
@@ -220,7 +212,17 @@ class SoccerwayFixturesScraper(BaseScraper):
                             fixture_data['away_goals'] = None
                     else:
                         fixture_data['home_goals'] = None
-                        fixture_data['away_goals'] = None
+                        fixture_data['away_goals'] = None 
+                    
+                    # Extract URL
+                    url_link = container.find('a', class_='sc-22ef6ec-0 sc-f6b773a5-2 boVFdS ZfONG')
+
+                    if url_link and url_link.get('href'):
+                        fixture_data['url'] = url_link['href']
+                        fixture_data['url'] = self.base_url + fixture_data['url']
+                        print(f"Fixture URL found: {fixture_data['url']}")
+                    else:
+                        continue  # Skip if no URL found
                     
                     fixtures.append(fixture_data)
                     
@@ -230,8 +232,8 @@ class SoccerwayFixturesScraper(BaseScraper):
                     continue
         
             output_file = f"inside_function_soccerway_3liga-fixtures_spieltag-{target_spieltag}.csv"
-            
-            fieldnames = ['home_team', 'away_team', 'home_goals', 'away_goals', 'url']
+                        
+            fieldnames = ['home_team', 'away_team', 'home_goals', 'away_goals', 'url', 'spieltag']
     
             with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
