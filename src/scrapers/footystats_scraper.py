@@ -2,12 +2,14 @@
 FootyStats fixtures
 """
 
+import os
 import re
 import csv
 import json
 import time
 import random
 import chromedriver_autoinstaller
+from pathlib import Path  
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from urllib.parse import urljoin
@@ -71,7 +73,7 @@ class FootyStatsScraper(BaseScraper):
             time.sleep(3)  # Wait for page to load
             
             # Save HTML
-            html_path = 'footystats_fixtures.html'
+            html_path = 'data/footystats/footystats_fixtures.html'
             with open(html_path, 'w', encoding='utf-8') as f:
                 f.write(driver.page_source)
             self.logger.info(f"Selenium HTML saved to {html_path}")
@@ -185,9 +187,17 @@ class FootyStatsScraper(BaseScraper):
         return csv_path
     
     def scrape_fixtures(self, target_spieltag: int) -> List[Dict[str, Any]]:
-        self.logger.info(f"🏈 Scraping FootyStats fixtures for Spieltag {target_spieltag}")
+    
+        csv_path = Path(f'data/footystats/footystats_3liga-fixtures_spieltag-{target_spieltag}.csv')
         
-        # Check if spieltag date is in the future
+        # Check if the CSV already exists  
+        if csv_path.exists():  
+            self.logger.info(f"⏩ Skipping Spieltag {target_spieltag}: CSV already exists at {csv_path}")  
+            return []  
+    
+        self.logger.info(f"🏈 Scraping FootyStats fixtures for Spieltag {target_spieltag}")  
+    
+        # Check if spieltag date is in the future  
         spieltag_map = getattr(config, 'SPIELTAG_MAP', {})
         if target_spieltag in spieltag_map:
             date_str = spieltag_map[target_spieltag][1]
@@ -205,9 +215,6 @@ class FootyStatsScraper(BaseScraper):
         
         # Parse matches from HTML
         matches = self.parse_matches_from_html(html_path, footystats_spieltag, target_spieltag)
-        
-        # Export to CSV
-        csv_path = self.export_matches_to_csv(matches, target_spieltag)
         
         # Convert matches to the expected format for return value
         fixtures = []

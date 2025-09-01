@@ -5,6 +5,7 @@ Runs the complete pipeline: fixtures -> xG -> xP -> season table -> dashboard
 import os
 import sys
 import time
+import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -167,7 +168,6 @@ class WeeklyUpdateManager:
                     continue
                 
                 # Load fixtures and scrape xG
-                import pandas as pd
                 df = pd.read_csv(fixtures_file)
                 
                 if 'stats_link' not in df.columns and 'url' not in df.columns:
