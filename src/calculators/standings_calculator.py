@@ -1,4 +1,5 @@
-import os  
+import re
+import os
 import pandas as pd
 from ..utils.config import config
   
@@ -49,10 +50,10 @@ class GenerateClassicStandings:
                     team_points[team].append(points_this_spieltag[team])  
                   
                 # Ensure all teams have a value for this spieltag (even if 0)  
-                for team in team_points:  
-                    if len(team_points[team]) < idx:  
-                        team_points[team].append(0)  
-              
+                for team in team_points:
+                    if len(team_points[team]) < idx:
+                        team_points[team].append(None)
+                            
             except Exception as e:  
                 print(f"Error processing file {file}: {e}")  
                 continue  
@@ -72,13 +73,29 @@ class GenerateClassicStandings:
     
     def calculate_classic_standings(self, csv_folder):  
         
+        csv_folder = config.SOCCERWAY_DIR
+        export_folder2 = config.FOOTYSTATS_DIR
+
         # Load the points per spieltag data  
         df_points = self.calculate_points_per_spieltag(csv_folder)
         
-        # Ensure 'points_spieltag' columns are included up to the target spieltag  
-        spieltag_columns = [col for col in df_points.columns if col.startswith('points_spieltag')]  
-        latest_spieltag = len(spieltag_columns)  
-          
+        # Extract spieltag numbers from filenames in the folder
+        spieltag_files = [
+            f for f in os.listdir(csv_folder)
+            if f.endswith('.csv') and not f.endswith('_xg.csv') and not f.endswith('_xp.csv')
+        ]
+        spieltag_numbers = []
+        for f in spieltag_files:
+            match = re.search(r'spieltag-(\d+)', f)
+            if match:
+                spieltag_numbers.append(int(match.group(1)))
+        if spieltag_numbers:
+            latest_spieltag = max(spieltag_numbers)
+        else:
+            latest_spieltag = len(spieltag_columns)
+            
+        spieltag_columns = [col for col in df_points.columns if col.startswith('points_spieltag')]
+        
         # Calculate total points up to the latest spieltag  
         df_points['Total Points'] = df_points[spieltag_columns].sum(axis=1)  
           
@@ -88,5 +105,10 @@ class GenerateClassicStandings:
         # Save the standings to a CSV file  
         output_filename = f'classic_standings_spieltag-{latest_spieltag}.csv'  
         output_path = os.path.join(csv_folder, output_filename)  
-        df_standings.to_csv(output_path, index=False)  
+        df_standings.to_csv(output_path, index=False)
+        
+        output_filename2 = f'classic_standings_spieltag-{latest_spieltag}.csv'  
+        output_path2 = os.path.join(export_folder2, output_filename2)
+        df_standings.to_csv(output_path2, index=False)
+
         print(f"Classic standings saved to {output_path}")
