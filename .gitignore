@@ -1,7 +1,4 @@
 # Data files and outputs
-data/
-*.csv
-*.html
 *.png
 *.jpg
 
