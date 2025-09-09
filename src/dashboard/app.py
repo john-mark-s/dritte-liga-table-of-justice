@@ -270,7 +270,7 @@ def render_league_table_component(source, selected_teams=None):
 
 
 def render_performance_plot_component(source, selected_teams=None):
-    """Render performance plot component"""
+    """Show dots only, team names on hover with enhanced styling"""
     source_data = data_loader.data.get(source, {})
     
     if 'season' not in source_data:
@@ -278,15 +278,15 @@ def render_performance_plot_component(source, selected_teams=None):
     
     df = source_data['season'].copy()
     
-    # Expected vs Actual Points scatter plot
     if 'Actual_Points' in df.columns and not df['Actual_Points'].isna().all():
-        
-        # Add small jitter to actual points to address discrete vs continuous issue
-        np.random.seed(42)  # For reproducible jitter
+        # Add jitter
+        np.random.seed(42)
         jitter_amount = 0.05
         df['Actual_Points_Jittered'] = df['Actual_Points'] + np.random.uniform(-jitter_amount, jitter_amount, len(df))
         
-        # Create color column based on filtering
+        # Calculate performance difference for color coding
+        df['Performance_Diff'] = df['Actual_Points'] - df['xP']
+        
         if selected_teams:
             df['Color'] = df['Team'].apply(lambda x: 'Highlighted' if x in selected_teams else 'Other')
             df_filtered = df[df['Team'].isin(selected_teams)]
@@ -294,78 +294,70 @@ def render_performance_plot_component(source, selected_teams=None):
         else:
             df['Color'] = 'All Teams'
         
-        # Create scatter plot
+        # Create scatter plot with NO TEXT labels, only hover
         if selected_teams:
-            # Plot other teams in background with reduced opacity
+            # Other teams (background)
             fig_scatter = px.scatter(
                 df_other, x='xP', y='Actual_Points_Jittered',
-                title=f"Expected vs Actual Points",
+                hover_name='Team',
+                hover_data={
+                    'xP': ':.1f',  # 1 decimal place for xP
+                    'Actual_Points': ':.0f',  # 0 decimals for actual points (original, non-jittered)
+                    'Performance_Diff': ':.1f',  # 1 decimal for performance difference
+                    'Actual_Points_Jittered': False  # Hide the jittered y-axis value
+                },
+                title=f"Expected vs Actual Points (Hover for team names)",
                 labels={'xP': 'Expected Points (xP)', 'Actual_Points_Jittered': 'Actual Points'},
                 height=500,
-                opacity=0.3
+                opacity=0.4
             )
             
-            # Add highlighted teams with full opacity and labels
+            # Highlighted teams
             fig_highlight = px.scatter(
                 df_filtered, x='xP', y='Actual_Points_Jittered',
-                text='Team',
+                hover_name='Team',
+                hover_data={
+                    'xP': ':.1f',
+                    'Actual_Points': ':.0f', 
+                    'Performance_Diff': ':.1f',
+                    'Actual_Points_Jittered': False  # Hide the jittered y-axis value
+                },
                 labels={'xP': 'Expected Points (xP)', 'Actual_Points_Jittered': 'Actual Points'}
             )
             
-            # Combine traces
             for trace in fig_highlight.data:
-                trace.marker.size = 10
+                trace.marker.size = 12
                 trace.marker.color = 'red'
-                trace.textposition = "top center"
+                trace.marker.line = dict(width=2, color='darkred')
                 fig_scatter.add_trace(trace)
-            
         else:
-            # Show all teams normally
+            # Color code by performance (overperforming = green, underperforming = red)
             fig_scatter = px.scatter(
-                df, x='xP', y='Actual_Points_Jittered', 
-                text='Team',
-                title=f"Expected vs Actual Points",
+                df, x='xP', y='Actual_Points_Jittered',
+                color='Performance_Diff',
+                hover_name='Team',
+                hover_data={
+                    'xP': ':.1f',
+                    'Actual_Points': ':.0f', 
+                    'Performance_Diff': ':.1f',
+                    'Actual_Points_Jittered': False  # Hide the jittered y-axis value
+                },
+                color_continuous_scale=['red', 'lightgray', 'green'],
+                color_continuous_midpoint=0,
+                title=f"Expected vs Actual Points (Color = Performance)",
                 labels={'xP': 'Expected Points (xP)', 'Actual_Points_Jittered': 'Actual Points'},
                 height=500
             )
-            
-            # Customize markers
-            fig_scatter.update_traces(
-                textposition="top center",
-                marker=dict(size=8, color='rgba(55, 128, 191, 0.7)', line=dict(width=1, color='rgba(55, 128, 191, 1)'))
-            )
+            fig_scatter.update_traces(marker=dict(size=10, line=dict(width=1, color='black')))
         
-        # Add diagonal line (perfect correlation)
+        # Add diagonal line and styling as before
         min_val = min(df['xP'].min(), df['Actual_Points'].min()) - 1
         max_val = max(df['xP'].max(), df['Actual_Points'].max()) + 1
         fig_scatter.add_shape(
-            type="line", 
-            line=dict(dash="dash", color="red", width=2),
+            type="line", line=dict(dash="dash", color="gray", width=2),
             x0=min_val, y0=min_val, x1=max_val, y1=max_val
         )
         
-        # Add annotations for overperforming/underperforming regions
-        fig_scatter.add_annotation(
-            x=max_val * 0.8, y=max_val * 0.6,
-            text="Underperforming<br>(Below Expected)",
-            showarrow=False,
-            font=dict(color="red", size=12),
-            bgcolor="rgba(255,255,255,0.8)",
-            bordercolor="red",
-            borderwidth=1
-        )
-        
-        fig_scatter.add_annotation(
-            x=max_val * 0.6, y=max_val * 0.8,
-            text="Overperforming<br>(Above Expected)",
-            showarrow=False,
-            font=dict(color="green", size=12),
-            bgcolor="rgba(255,255,255,0.8)",
-            bordercolor="green",
-            borderwidth=1
-        )
-        
-        # Update layout
         fig_scatter.update_layout(
             showlegend=False,
             plot_bgcolor='white',
