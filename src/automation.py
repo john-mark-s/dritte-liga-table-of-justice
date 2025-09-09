@@ -297,7 +297,7 @@ class WeeklyUpdateManager:
         source_dir = config.SOCCERWAY_DIR  
         try:  
             # Call the method and let it determine the latest spieltag  
-            self.standard_standings.calculate_classic_standings(source_dir)  
+            self.standard_standings().calculate_classic_standings(source_dir)
             success = True  
         except Exception as e:  
             self.logger.error(f"❌ Error creating standard standings for {source_dir}: {e}")  
@@ -320,6 +320,7 @@ class WeeklyUpdateManager:
             ("Scrape Fixtures", lambda: self.step1_scrape_fixtures(spieltag)),
             ("Scrape xG", lambda: self.step2_scrape_xg(spieltag)),
             ("Calculate xP", lambda: self.step3_calculate_xp(spieltag)),
+            ("Update Season Tables", self.step4_update_season_tables),
             ("Create Standard Standings", self.step5_create_standard_standings)
         ]
         
