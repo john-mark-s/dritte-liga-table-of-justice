@@ -5,6 +5,7 @@
 
 import argparse
 import sys
+import os
 from pathlib import Path
 
 from src.automation import WeeklyUpdateManager
@@ -175,6 +176,17 @@ def start_dashboard(args):
     logger = get_logger('dashboard')
     
     logger.info("🚀 Starting 3. Liga Table of Justice Dashboard")
+
+    # Check if running on Render (they set PORT environment variable)
+    if "PORT" in os.environ:
+        port = int(os.environ["PORT"])
+        host = "0.0.0.0"  # Required for Render
+        debug = False     # Never debug in production
+    else:
+        # Local development
+        port = args.port or config.DASHBOARD_PORT
+        host = args.host or config.DASHBOARD_HOST  
+        debug = args.debug if args.debug is not None else config.DASHBOARD_DEBUG
     
     # Check if data files exist
     data_found = False
@@ -191,14 +203,13 @@ def start_dashboard(args):
     
     try:
         dashboard.run(
-            host=args.host,
-            port=args.port,
-            debug=args.debug
+            host=host,
+            port=port,
+            debug=debug
         )
     except Exception as e:
         logger.error(f"❌ Dashboard failed to start: {e}")
         sys.exit(1)
-
 
 def run_scraping(args):
     """Run individual scraping operations"""
