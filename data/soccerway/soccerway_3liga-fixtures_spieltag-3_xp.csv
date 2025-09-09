@@ -1,0 +1,11 @@
+spieltag,home_team,away_team,home_goals,away_goals,url,home_xG,away_xG,home_xP,away_xP,home_win_prob,draw_prob,away_win_prob
+3,SV Wehen Wiesbaden,Rot-Weiss Essen,3,4,https://int.soccerway.com/matches/2025/08/22/germany/3-liga/wiesbaden/rw-essen/I1998461/,2.78,2.69,1.457,1.367,0.427,0.175,0.397
+3,TSG Hoffenheim II U23,Energie Cottbus,4,1,https://int.soccerway.com/matches/2025/08/23/germany/3-liga/hoffenheim-ii/cottbus/I2221185/,2.86,2.63,1.527,1.298,0.451,0.174,0.375
+3,Alemannia Aachen,TSV 1860 München,0,2,https://int.soccerway.com/matches/2025/08/23/germany/3-liga/alemannia/1860-m-nchen/I1998449/,0.6,1.46,0.723,2.011,0.152,0.266,0.582
+3,VfL Osnabrück,1. FC Saarbrücken,2,0,https://int.soccerway.com/matches/2025/08/23/germany/3-liga/osnabr-ck/saarbr-cken/I1998537/,1.09,0.62,1.726,0.949,0.467,0.325,0.208
+3,SSV Jahn Regensburg,1. FC Schweinfurt 05,3,0,https://int.soccerway.com/matches/2025/08/23/germany/3-liga/regensburg/schweinfurt/I1998471/,3.19,0.62,2.686,0.219,0.864,0.093,0.042
+3,VfB Stuttgart II U21,SC Verl,1,1,https://int.soccerway.com/matches/2025/08/23/germany/3-liga/stuttgart-ii/verl/I2006053/,2.27,2.8,1.139,1.683,0.32,0.178,0.502
+3,MSV Duisburg,SSV Ulm 1846,2,1,https://int.soccerway.com/matches/2025/08/23/germany/3-liga/duisburg/ulm/I2097182/,1.27,1.33,1.326,1.41,0.354,0.264,0.382
+3,FC Ingolstadt 04,F.C. Hansa Rostock,1,1,https://int.soccerway.com/matches/2025/08/24/germany/3-liga/ingolstadt/rostock/I1998477/,1.76,1.13,1.799,0.967,0.521,0.235,0.244
+3,Erzgebirge Aue,TSV Havelse,2,1,https://int.soccerway.com/matches/2025/08/24/germany/3-liga/aue/havelse/I1998540/,1.63,1.89,1.231,1.549,0.337,0.22,0.443
+3,SV Waldhof Mannheim,FC Viktoria Köln,2,0,https://int.soccerway.com/matches/2025/08/24/germany/3-liga/waldhof/viktoria/I1998464/,0.75,2.01,0.591,2.208,0.13,0.201,0.669
