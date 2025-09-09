@@ -307,9 +307,14 @@ def render_performance_plot_component(source, selected_teams=None):
                     'Actual_Points_Jittered': False  # Hide the jittered y-axis value
                 },
                 title=f"Expected vs Actual Points (Hover for team names)",
-                labels={'xP': 'Expected Points (xP)', 'Actual_Points_Jittered': 'Actual Points'},
                 height=500,
-                opacity=0.4
+                opacity=0.4,
+                labels={
+                    'xP': 'Expected Points',
+                    'Actual_Points': 'Points',
+                    'Performance_Diff': 'Difference',
+                    'Actual_Points_Jittered': 'Actual Points'
+                }
             )
             
             # Highlighted teams
@@ -322,7 +327,12 @@ def render_performance_plot_component(source, selected_teams=None):
                     'Performance_Diff': ':.1f',
                     'Actual_Points_Jittered': False  # Hide the jittered y-axis value
                 },
-                labels={'xP': 'Expected Points (xP)', 'Actual_Points_Jittered': 'Actual Points'}
+                labels={
+                    'xP': 'Expected Points',
+                    'Actual_Points': 'Points',
+                    'Performance_Diff': 'Difference',
+                    'Actual_Points_Jittered': 'Actual Points'
+                }
             )
             
             for trace in fig_highlight.data:
@@ -345,8 +355,13 @@ def render_performance_plot_component(source, selected_teams=None):
                 color_continuous_scale=['red', 'lightgray', 'green'],
                 color_continuous_midpoint=0,
                 title=f"Expected vs Actual Points (Color = Performance)",
-                labels={'xP': 'Expected Points (xP)', 'Actual_Points_Jittered': 'Actual Points'},
-                height=500
+                height=500,
+                labels={
+                    'xP': 'Expected Points',
+                    'Actual_Points': 'Points',
+                    'Performance_Diff': 'Difference',
+                    'Actual_Points_Jittered': 'Actual Points'
+                }
             )
             fig_scatter.update_traces(marker=dict(size=10, line=dict(width=1, color='black')))
         
