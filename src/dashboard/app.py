@@ -60,6 +60,20 @@ class DashboardDataLoader:
             if 'season' in data:
                 data['season'] = self._merge_xg_data(data['season'], xg_df)
         
+        # Load classical league table if available
+        classical_standings = list(source_dir.glob("classic_standings_spieltag-*.csv"))
+        if classical_standings:
+            standings_df = pd.read_csv(classical_standings[0])
+            data['classical'] = standings_df
+            logger.info(f"Loaded classical standings with {len(standings_df)} teams")
+            
+            # Merge classical standings with season data
+            if 'season' in data:
+                data['season'] = self._merge_classical_standings(data['season'], standings_df)
+        else:
+            logger.warning(f"No classical standings file found in {source_dir}")
+            logger.info("Expected filename pattern: classic_standings_spieltag-*.csv")
+        
         return data
     
     def _convert_season_xp_to_table_format(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -71,129 +85,116 @@ class DashboardDataLoader:
         # Create the expected format
         result_df = pd.DataFrame()
         result_df['Team'] = df['Team']
-        result_df['xP'] = df['Total_xP']
+        result_df['xP'] = df['Total_xP'].round(1)
         
         # Calculate matches played (count non-null spieltag columns)
         spieltag_cols = [col for col in df.columns if col.startswith('spieltag-')]
         result_df['Matches_Played'] = df[spieltag_cols].notna().sum(axis=1)
         
-        # Add placeholder for actual points (would need to be loaded from actual results)
-        result_df['Actual_Points'] = result_df['xP']  # Placeholder - replace with actual data
-        
-        # Sort by xP descending
+        # Sort by xP descending for initial positioning
         result_df = result_df.sort_values('xP', ascending=False).reset_index(drop=True)
         result_df['Position'] = range(1, len(result_df) + 1)
         
         return result_df
     
+    def _merge_classical_standings(self, season_df: pd.DataFrame, standings_df: pd.DataFrame) -> pd.DataFrame:
+        """Merge classical standings data (actual points) into season dataframe"""
+        try:
+            # Create mapping from classical standings
+            # Assuming classical standings has columns like 'Team' and 'Points' or 'Pkt'
+            points_col = None
+            for col in ['Total Points']:
+                if col in standings_df.columns:
+                    points_col = col
+                    break
+            
+            if points_col is None:
+                logger.warning("No points column found in classical standings")
+                season_df['Actual_Points'] = 0
+                return season_df
+            
+            # Create clean mapping dataframe
+            standings_clean = standings_df[['Team', points_col]].copy()
+            standings_clean.rename(columns={points_col: 'Actual_Points'}, inplace=True)
+            
+            # Merge with season data
+            season_df = season_df.merge(standings_clean, on='Team', how='left')
+            
+            # Fill missing values with 0
+            season_df['Actual_Points'] = season_df['Actual_Points'].fillna(0)
+            
+            logger.info(f"Successfully merged actual points for {len(season_df)} teams")
+            
+        except Exception as e:
+            logger.warning(f"Failed to merge classical standings: {e}")
+            season_df['Actual_Points'] = 0
+        
+        return season_df
+    
     def _merge_xg_data(self, season_df: pd.DataFrame, xg_df: pd.DataFrame) -> pd.DataFrame:
-        """Merge xG data into season dataframe"""
+        """Merge xG data into season dataframe - only keeping xGF"""
         if 'Total_xG' not in xg_df.columns:
             return season_df
         
-        # Create temporary dataframe for merging
-        xg_summary = pd.DataFrame()
-        xg_summary['Team'] = xg_df['Team']
-        xg_summary['Total_xG'] = xg_df['Total_xG']
-        
-        # For goals for/against, we need to process match data
-        # For now, create placeholder values
-        xg_summary['xGF'] = xg_summary['Total_xG'] / 2  # Placeholder
-        xg_summary['xGA'] = xg_summary['Total_xG'] / 2  # Placeholder
-        xg_summary['xGD'] = xg_summary['xGF'] - xg_summary['xGA']
-        
-        # Merge with season data
-        season_df = season_df.merge(xg_summary[['Team', 'xGF', 'xGA', 'xGD']], 
-                                   on='Team', how='left')
-        
-        # Fill NaN values
-        season_df['xGF'] = season_df['xGF'].fillna(0)
-        season_df['xGA'] = season_df['xGA'].fillna(0)
-        season_df['xGD'] = season_df['xGD'].fillna(0)
+        try:
+            # Create temporary dataframe for merging
+            xg_summary = pd.DataFrame()
+            xg_summary['Team'] = xg_df['Team']
+            
+            # Only extract xGF (Goals For) - assuming Total_xG represents this
+            # You might need to adjust this based on your actual xG data structure
+            if 'xGF' in xg_df.columns:
+                xg_summary['xGF'] = xg_df['xGF']
+            elif 'Goals_For_xG' in xg_df.columns:
+                xg_summary['xGF'] = xg_df['Goals_For_xG']
+            else:
+                # Fallback: use Total_xG as approximation for xGF
+                xg_summary['xGF'] = xg_df['Total_xG']
+            
+            # Round to 1 decimal place
+            xg_summary['xGF'] = xg_summary['xGF'].round(1)
+            
+            # Merge with season data
+            season_df = season_df.merge(xg_summary[['Team', 'xGF']], 
+                                       on='Team', how='left')
+            
+            # Fill NaN values
+            season_df['xGF'] = season_df['xGF'].fillna(0.0)
+            
+            logger.info(f"Successfully merged xGF data for {len(season_df)} teams")
+            
+        except Exception as e:
+            logger.warning(f"Failed to merge xG data: {e}")
+            season_df['xGF'] = 0.0
         
         return season_df
 
-# Initialize data loader
-data_loader = DashboardDataLoader()
 
-# Initialize Dash app
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-app.title = "3. Liga Table of Justice"
+class Dashboard:
+    """Dashboard wrapper class"""
+    
+    def __init__(self):
+        self.app = app
+        self.data_loader = data_loader
+    
+    def run(self, host=None, port=None, debug=None):
+        """Run the dashboard"""
+        # Use config defaults if not specified
+        host = host or config.DASHBOARD_HOST
+        port = port or config.DASHBOARD_PORT
+        debug = debug if debug is not None else config.DASHBOARD_DEBUG
+        
+        logger.info(f"🌐 Dashboard running at http://{host}:{port}")
+        
+        try:
+            self.app.run(host=host, port=port, debug=debug)
+        except Exception as e:
+            logger.error(f"💥 Dashboard failed: {e}")
+            raise
 
-# App layout
-app.layout = dbc.Container([
-    dbc.Row([
-        dbc.Col([
-            html.Div([
-                html.H1("⚽ 3. Liga Table of Justice", className="text-center mb-0"),
-                html.P("Expected Goals (xG) and Expected Points (xP) Analytics", 
-                      className="text-center text-muted mb-4"),
-            ])
-        ])
-    ]),
-    
-    # Controls
-    dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H5("Controls", className="card-title"),
-                    dbc.Row([
-                        dbc.Col([
-                            html.Label("Data Source:"),
-                            dcc.Dropdown(
-                                id='source-dropdown',
-                                options=[
-                                    {'label': source.title(), 'value': source} 
-                                    for source in config.ENABLED_SOURCES
-                                ],
-                                value=config.ENABLED_SOURCES[0] if config.ENABLED_SOURCES else None,
-                                clearable=False
-                            )
-                        ], width=6)
-                    ])
-                ])
-            ])
-        ])
-    ], className="mb-4"),
-    
-    # Main content tabs
-    dbc.Tabs([
-        dbc.Tab(label="League Table", tab_id="league-table"),
-        dbc.Tab(label="Performance Plots", tab_id="performance-plots"),
-    ], id="main-tabs", active_tab="league-table"),
-    
-    html.Div(id="tab-content", className="mt-4"),
-    
-    # Footer
-    html.Hr(),
-    html.Footer([
-        html.P([
-            "Data scraped from FootyStats and Soccerway • ",
-            f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        ], className="text-center text-muted small")
-    ])
-], fluid=True)
 
-# Callback for tab content
-@callback(
-    Output("tab-content", "children"),
-    [Input("main-tabs", "active_tab"),
-     Input("source-dropdown", "value")]
-)
-def render_tab_content(active_tab, source):
-    if not source or source not in data_loader.data:
-        return dbc.Alert("No data available. Run the pipeline first.", color="warning")
-    
-    if active_tab == "league-table":
-        return render_league_table(source)
-    elif active_tab == "performance-plots":
-        return render_performance_plots(source)
-    
-    return html.Div("Select a tab")
-
-def render_league_table(source):
-    """Render the league table tab"""
+def render_league_table_component(source, selected_teams=None):
+    """Render the league table component"""
     source_data = data_loader.data.get(source, {})
     
     if 'season' not in source_data:
@@ -201,13 +202,11 @@ def render_league_table(source):
     
     df = source_data['season'].copy()
     
-    # Calculate point difference if both xP and Actual_Points exist
-    if 'Actual_Points' in df.columns and 'xP' in df.columns:
-        df['Point_Difference'] = (df['xP'] - df['Actual_Points']).round(1)
-    else:
-        df['Point_Difference'] = 0.0
+    # Filter by selected teams if any
+    if selected_teams:
+        df = df[df['Team'].isin(selected_teams)]
     
-    # Prepare table columns
+    # Prepare table columns based on your requirements
     columns = [
         {"name": "Pos", "id": "Position", "type": "numeric"},
         {"name": "Team", "id": "Team"},
@@ -218,15 +217,10 @@ def render_league_table(source):
     # Add actual points if available
     if 'Actual_Points' in df.columns:
         columns.append({"name": "Actual P", "id": "Actual_Points", "type": "numeric"})
-        columns.append({"name": "Diff", "id": "Point_Difference", "type": "numeric", "format": {"specifier": "+.1f"}})
     
-    # Add xG columns if available
+    # Add xGF if available (only xGF, not xGA or xGD)
     if 'xGF' in df.columns:
-        columns.extend([
-            {"name": "xGF", "id": "xGF", "type": "numeric", "format": {"specifier": ".1f"}},
-            {"name": "xGA", "id": "xGA", "type": "numeric", "format": {"specifier": ".1f"}},
-            {"name": "xGD", "id": "xGD", "type": "numeric", "format": {"specifier": "+.1f"}},
-        ])
+        columns.append({"name": "xGF", "id": "xGF", "type": "numeric", "format": {"specifier": ".1f"}})
     
     # Style data conditionally
     style_data_conditional = [
@@ -250,47 +244,33 @@ def render_league_table(source):
         },
     ]
     
-    # Add point difference styling if available
-    if 'Point_Difference' in df.columns:
-        style_data_conditional.extend([
-            {
-                'if': {'filter_query': '{Point_Difference} > 0'},
-                'color': 'green',
-            },
-            {
-                'if': {'filter_query': '{Point_Difference} < 0'},
-                'color': 'red',
-            }
-        ])
+    filter_text = f" (Filtered: {len(df)} teams)" if selected_teams else f" (All {len(df)} teams)"
     
-    return dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader([
-                    html.H4(f"xP-Based League Table ({source.title()})", className="mb-0")
-                ]),
-                dbc.CardBody([
-                    dash_table.DataTable(
-                        data=df.to_dict('records'),
-                        columns=columns,
-                        style_cell={'textAlign': 'center', 'padding': '10px'},
-                        style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'},
-                        style_data_conditional=style_data_conditional,
-                        sort_action="native",
-                    ),
-                    html.Div([
-                        html.Small([
-                            "🟢 Promotion • 🟡 Playoff • 🔴 Relegation",
-                            " • Green: Overperforming xP • Red: Underperforming xP" if 'Point_Difference' in df.columns else ""
-                        ], className="text-muted mt-2")
-                    ])
-                ])
+    return dbc.Card([
+        dbc.CardHeader([
+            html.H4(f"xP-Based League Table")
+        ]),
+        dbc.CardBody([
+            dash_table.DataTable(
+                data=df.to_dict('records'),
+                columns=columns,
+                style_cell={'textAlign': 'center', 'padding': '8px', 'fontSize': '12px'},
+                style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold', 'fontSize': '12px'},
+                style_data_conditional=style_data_conditional,
+                sort_action="native",
+                page_size=20,
+            ),
+            html.Div([
+                html.Small([
+                    "🟢 Promotion • 🟡 Playoff • 🔴 Relegation"
+                ], className="text-muted mt-2")
             ])
         ])
     ])
 
-def render_performance_plots(source):
-    """Render performance plots tab"""
+
+def render_performance_plot_component(source, selected_teams=None):
+    """Render performance plot component"""
     source_data = data_loader.data.get(source, {})
     
     if 'season' not in source_data:
@@ -298,73 +278,222 @@ def render_performance_plots(source):
     
     df = source_data['season'].copy()
     
-    plots = []
-    
-    # Expected vs Actual Points scatter plot (if actual points available)
-    if 'Actual_Points' in df.columns:
-        fig_scatter = px.scatter(
-            df, x='xP', y='Actual_Points', 
-            hover_data=['Team'],
-            title=f"Expected vs Actual Points ({source.title()})",
-            labels={'xP': 'Expected Points', 'Actual_Points': 'Actual Points'}
-        )
+    # Expected vs Actual Points scatter plot
+    if 'Actual_Points' in df.columns and not df['Actual_Points'].isna().all():
+        
+        # Add small jitter to actual points to address discrete vs continuous issue
+        np.random.seed(42)  # For reproducible jitter
+        jitter_amount = 0.05
+        df['Actual_Points_Jittered'] = df['Actual_Points'] + np.random.uniform(-jitter_amount, jitter_amount, len(df))
+        
+        # Create color column based on filtering
+        if selected_teams:
+            df['Color'] = df['Team'].apply(lambda x: 'Highlighted' if x in selected_teams else 'Other')
+            df_filtered = df[df['Team'].isin(selected_teams)]
+            df_other = df[~df['Team'].isin(selected_teams)]
+        else:
+            df['Color'] = 'All Teams'
+        
+        # Create scatter plot
+        if selected_teams:
+            # Plot other teams in background with reduced opacity
+            fig_scatter = px.scatter(
+                df_other, x='xP', y='Actual_Points_Jittered',
+                title=f"Expected vs Actual Points",
+                labels={'xP': 'Expected Points (xP)', 'Actual_Points_Jittered': 'Actual Points'},
+                height=500,
+                opacity=0.3
+            )
+            
+            # Add highlighted teams with full opacity and labels
+            fig_highlight = px.scatter(
+                df_filtered, x='xP', y='Actual_Points_Jittered',
+                text='Team',
+                labels={'xP': 'Expected Points (xP)', 'Actual_Points_Jittered': 'Actual Points'}
+            )
+            
+            # Combine traces
+            for trace in fig_highlight.data:
+                trace.marker.size = 10
+                trace.marker.color = 'red'
+                trace.textposition = "top center"
+                fig_scatter.add_trace(trace)
+            
+        else:
+            # Show all teams normally
+            fig_scatter = px.scatter(
+                df, x='xP', y='Actual_Points_Jittered', 
+                text='Team',
+                title=f"Expected vs Actual Points",
+                labels={'xP': 'Expected Points (xP)', 'Actual_Points_Jittered': 'Actual Points'},
+                height=500
+            )
+            
+            # Customize markers
+            fig_scatter.update_traces(
+                textposition="top center",
+                marker=dict(size=8, color='rgba(55, 128, 191, 0.7)', line=dict(width=1, color='rgba(55, 128, 191, 1)'))
+            )
         
         # Add diagonal line (perfect correlation)
-        min_val = min(df['xP'].min(), df['Actual_Points'].min())
-        max_val = max(df['xP'].max(), df['Actual_Points'].max())
+        min_val = min(df['xP'].min(), df['Actual_Points'].min()) - 1
+        max_val = max(df['xP'].max(), df['Actual_Points'].max()) + 1
         fig_scatter.add_shape(
-            type="line", line=dict(dash="dash"),
+            type="line", 
+            line=dict(dash="dash", color="red", width=2),
             x0=min_val, y0=min_val, x1=max_val, y1=max_val
         )
         
-        plots.append(dbc.Col([dcc.Graph(figure=fig_scatter)], width=6))
-    
-    # xG vs xGA scatter plot (if xG data available)
-    if 'xGF' in df.columns and 'xGA' in df.columns:
-        fig_xg_scatter = px.scatter(
-            df, x='xGA', y='xGF',
-            hover_data=['Team'],
-            title=f"Expected Goals For vs Against ({source.title()})",
-            labels={'xGF': 'Expected Goals For', 'xGA': 'Expected Goals Against'}
+        # Add annotations for overperforming/underperforming regions
+        fig_scatter.add_annotation(
+            x=max_val * 0.8, y=max_val * 0.6,
+            text="Underperforming<br>(Below Expected)",
+            showarrow=False,
+            font=dict(color="red", size=12),
+            bgcolor="rgba(255,255,255,0.8)",
+            bordercolor="red",
+            borderwidth=1
         )
         
-        plots.append(dbc.Col([dcc.Graph(figure=fig_xg_scatter)], width=6))
-    
-    # xP distribution
-    fig_xp_dist = px.histogram(
-        df, x='xP',
-        title=f"Expected Points Distribution ({source.title()})",
-        labels={'xP': 'Expected Points'}
-    )
-    plots.append(dbc.Col([dcc.Graph(figure=fig_xp_dist)], width=6))
-    
-    if not plots:
-        return dbc.Alert("No data available for performance plots", color="warning")
-    
-    return dbc.Row(plots)
+        fig_scatter.add_annotation(
+            x=max_val * 0.6, y=max_val * 0.8,
+            text="Overperforming<br>(Above Expected)",
+            showarrow=False,
+            font=dict(color="green", size=12),
+            bgcolor="rgba(255,255,255,0.8)",
+            bordercolor="green",
+            borderwidth=1
+        )
+        
+        # Update layout
+        fig_scatter.update_layout(
+            showlegend=False,
+            plot_bgcolor='white',
+            xaxis=dict(gridcolor='lightgray'),
+            yaxis=dict(gridcolor='lightgray', title='Actual Points'),
+            margin=dict(l=40, r=40, t=40, b=40)
+        )
+        
+        filter_note = ""
+        if selected_teams:
+            filter_note = f" Showing {len(selected_teams)} selected team(s) in red."
+        
+        return dbc.Card([
+            dbc.CardBody([
+                dcc.Graph(figure=fig_scatter),
+                html.Div([
+                    html.P([
+                        "Teams above the red line are overperforming their expected points, ",
+                        "while teams below are underperforming. ",
+                        "Actual points are slightly jittered to better show overlapping values.",
+                        filter_note
+                    ], className="text-muted small mt-2")
+                ])
+            ])
+        ])
+    else:
+        return dbc.Alert(
+            "Actual points data not available. This analysis requires both expected points (xP) and actual points data.",
+            color="info"
+        )
 
-# Dashboard class for external usage
-class Dashboard:
-    """Dashboard wrapper class"""
+
+# Initialize data loader
+data_loader = DashboardDataLoader()
+
+# Initialize Dash app
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app.title = "3. Liga Table of Justice"
+
+# App layout
+app.layout = dbc.Container([
+    dbc.Row([
+        dbc.Col([
+            html.Div([
+                html.H1("3. Liga Table of Justice", className="text-center mb-0"),
+                html.P("Expected Goals (xG) and Expected Points (xP) Analytics", 
+                      className="text-center text-muted mb-4"),
+            ])
+        ])
+    ]),
     
-    def __init__(self):
-        self.app = app
-        self.data_loader = data_loader
+    # Data source tabs
+    dbc.Tabs([
+        dbc.Tab(label="FootyStats", tab_id="footystats"),
+        dbc.Tab(label="Soccerway", tab_id="soccerway"),
+    ], id="source-tabs", active_tab="footystats"),
+
+    # Controls
+    dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H5("Filter by Team:", className="card-title"),
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.Dropdown(
+                                id='team-filter-dropdown',
+                                placeholder="Select teams to highlight (leave empty to show all)",
+                                multi=True,
+                                clearable=True
+                            )
+                        ], width=12)
+                    ])
+                ])
+            ])
+        ])
+    ], className="mb-4"),
     
-    def run(self, host=None, port=None, debug=None):
-        """Run the dashboard"""
-        # Use config defaults if not specified
-        host = host or config.DASHBOARD_HOST
-        port = port or config.DASHBOARD_PORT
-        debug = debug if debug is not None else config.DASHBOARD_DEBUG
-        
-        logger.info(f"🌐 Dashboard running at http://{host}:{port}")
-        
-        try:
-            self.app.run(host=host, port=port, debug=debug)
-        except Exception as e:
-            logger.error(f"💥 Dashboard failed: {e}")
-            raise
+    # Main content - side by side layout
+    html.Div(id="main-content", className="mt-4"),
+    
+    # Footer
+    html.Hr(),
+    html.Footer([
+        html.P([
+            "Data scraped from FootyStats and Soccerway • ",
+            f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        ], className="text-center text-muted small")
+    ])
+], fluid=True)
+
+
+# Callbacks for main content and team filter
+@callback(
+    Output("team-filter-dropdown", "options"),
+    [Input("source-tabs", "active_tab")]
+)
+def update_team_filter_options(source):
+    """Update team filter options based on selected data source"""
+    if not source or source not in data_loader.data:
+        return []
+    
+    source_data = data_loader.data.get(source, {})
+    if 'season' not in source_data:
+        return []
+    
+    teams = source_data['season']['Team'].tolist()
+    return [{'label': team, 'value': team} for team in sorted(teams)]
+
+@callback(
+    Output("main-content", "children"),
+    [Input("source-tabs", "active_tab"),
+     Input("team-filter-dropdown", "value")]
+)
+def render_main_content(source, selected_teams):
+    if not source or source not in data_loader.data:
+        return dbc.Alert("No data available. Run the pipeline first.", color="warning")
+    
+    # Get the league table and performance plot components
+    league_table = render_league_table_component(source, selected_teams)
+    performance_plot = render_performance_plot_component(source, selected_teams)
+    
+    # Return side-by-side layout
+    return dbc.Row([
+        dbc.Col([league_table], width=6),
+        dbc.Col([performance_plot], width=6)
+    ])
+
 
 # Create dashboard instance
 dashboard = Dashboard()
