@@ -187,7 +187,7 @@ class Dashboard:
         logger.info(f"🌐 Dashboard running at http://{host}:{port}")
         
         try:
-            self.app.run(host=host, port=port, debug=debug)
+            self.app.run_server(host=host, port=port, debug=debug)  # Changed from run()
         except Exception as e:
             logger.error(f"💥 Dashboard failed: {e}")
             raise
@@ -411,6 +411,9 @@ data_loader = DashboardDataLoader()
 # Initialize Dash app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.title = "3. Liga Table of Justice"
+
+# Make server accessible for WSGI
+server = app.server
 
 # App layout
 app.layout = dbc.Container([
