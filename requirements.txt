@@ -28,4 +28,4 @@ black>=23.9.0,<24.0.0
 flake8>=6.1.0,<7.0.0
 
 # Production server
-gunicorin==22.0.0
+gunicorn==21.2.0
