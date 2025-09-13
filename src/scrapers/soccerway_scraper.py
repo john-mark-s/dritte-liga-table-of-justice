@@ -230,17 +230,6 @@ class SoccerwayFixturesScraper(BaseScraper):
                     # Skip problematic fixtures and continue
                     print(f"Error processing fixture: {e}")
                     continue
-        
-            output_file = f"inside_function_soccerway_3liga-fixtures_spieltag-{target_spieltag}.csv"
-                        
-            fieldnames = ['home_team', 'away_team', 'home_goals', 'away_goals', 'url', 'spieltag']
-    
-            with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(fixtures)
-            
-            print(f"Saved {len(fixtures)} fixtures to {output_file}")
 
             return fixtures
 

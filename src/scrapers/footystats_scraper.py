@@ -17,6 +17,8 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 from ..utils.scraper_base import BaseScraper
 from ..utils.config import config
@@ -289,18 +291,6 @@ class FootyStatsXGScraper:
         Returns:
             Dictionary with team names and xG values or None if failed
         """
-        try:
-            from selenium import webdriver
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.chrome.options import Options
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-            import chromedriver_autoinstaller
-            import time
-            import random
-        except ImportError as e:
-            self.logger.error(f"❌ Missing required packages for xG scraping: {e}")
-            return None
         
         # Setup Chrome driver
         try:
@@ -338,12 +328,36 @@ class FootyStatsXGScraper:
             # Close popups
             self._close_popups(driver)
             
-            # Extract team names and xG values
+            # Reset DOM-extracted data
+            self.dom_extracted_team_names = None
+            self.dom_extracted_xg_values = None
+            
+            # Extract xG values (this will also extract team names from DOM)
+            xg_values = self._find_xg_values(driver)
+            
+            # Check if we got team names from DOM (preferred method)
+            if (hasattr(self, 'dom_extracted_team_names') and 
+                self.dom_extracted_team_names and 
+                len(self.dom_extracted_team_names) == 2 and
+                len(xg_values) >= 2):
+                
+                team_names = self.dom_extracted_team_names
+                self.logger.info(f"✅ Using DOM-extracted team names: {team_names}")
+                
+                result = {
+                    'team_1_name': team_names[0],
+                    'team_1_xG': xg_values[0],
+                    'team_2_name': team_names[1],  
+                    'team_2_xG': xg_values[1]
+                }
+                self.logger.info(f"✅ xG extracted from DOM with perfect alignment: {result}")
+                return result
+            
+            # Fallback to URL/page extraction if DOM extraction didn't work
+            self.logger.warning("⚠️ DOM team name extraction failed, falling back to URL/page extraction")
             team_names = self._extract_team_names_from_url(url)
             if not team_names:
                 team_names = self._extract_team_names_from_page(driver)
-            
-            xg_values = self._find_xg_values(driver)
             
             if len(xg_values) == 2 and team_names and len(team_names) == 2:
                 result = {
@@ -352,7 +366,7 @@ class FootyStatsXGScraper:
                     'team_2_name': team_names[1],
                     'team_2_xG': xg_values[1]
                 }
-                self.logger.info(f"✅ xG extracted: {result}")
+                self.logger.info(f"✅ xG extracted (fallback method): {result}")
                 return result
             else:
                 self.logger.warning(f"⚠️ Incomplete xG data. Teams: {team_names}, xG: {xg_values}")
@@ -438,56 +452,142 @@ class FootyStatsXGScraper:
             self._strategy_css_xg
         ]
         
-        for strategy in strategies:
-            try:
-                values = strategy(driver)
-                if len(values) >= 2:
-                    return values[:2]
-            except Exception as e:
-                self.logger.debug(f"Strategy failed: {e}")
-                continue
-        
+        for strategy in strategies:  
+            try:  
+                self.logger.debug(f"Trying strategy: {strategy.__name__}")  
+                values = strategy(driver)  
+                self.logger.debug(f"Strategy {strategy.__name__} found values: {values}")  
+                if len(values) >= 2:  
+                    self.logger.info(f"Strategy {strategy.__name__} succeeded with values: {values}")  
+                    return values[:2]  
+                else:  
+                    self.logger.debug(f"Strategy {strategy.__name__} returned insufficient values: {values}")  
+            except Exception as e:  
+                self.logger.debug(f"Strategy {strategy.__name__} failed: {e}")  
+                continue  
+    
+        self.logger.warning("No strategy succeeded in extracting xG values.")  
         return []
     
     def _strategy_table_xg(self, driver) -> List[str]:
         """Strategy 1: Table-based xG extraction"""
+        self.logger.debug("Executing _strategy_table_xg")
         xg_elements = driver.find_elements(By.XPATH, 
             "//tr[td[contains(translate(text(), 'XG', 'xg'), 'xg')]]/td[@class='item stat average']")
-        return [x.text.strip() for x in xg_elements if x.text.strip() and re.match(r'^\d+(\.\d+)?$', x.text.strip())]
-    
+        xg_values = [x.text.strip() for x in xg_elements if x.text.strip() and re.match(r'^\d+(\.\d+)?$', x.text.strip())]
+
+        self.logger.debug(f"_strategy_table_xg found xG values: {xg_values}")  
+
+        return xg_values
+
     def _strategy_xpath_xg(self, driver) -> List[str]:
-        """Strategy 2: XPath-based xG extraction"""
+        """Strategy 2: XPath-based xG extraction with team name context from DOM"""
+        self.logger.debug("Executing _strategy_xpath_xg")
         xg_containers = driver.find_elements(By.XPATH, "//*[contains(translate(text(), 'XG', 'xg'), 'xg')]")
         
-        for container in xg_containers:
-            try:
-                parent = container.find_element(By.XPATH, "./..")
-                siblings = parent.find_elements(By.XPATH, "./*")
+        for container in xg_containers:  
+            try:  
+                # Look for table structure first - this is most reliable
+                table_row = container.find_element(By.XPATH, "./ancestor-or-self::tr")
+                table = table_row.find_element(By.XPATH, "./ancestor::table")
                 
-                numeric_values = []
-                for sibling in siblings:
-                    text = sibling.text.strip()
-                    if re.match(r'^\d+(\.\d+)?$', text):
-                        numeric_values.append(text)
+                # Extract team names from table headers
+                team_headers = table.find_elements(By.XPATH, ".//thead//th[position()>1]")  # Skip first column (Stats)
+                team_names = []
                 
-                if len(numeric_values) >= 2:
-                    return numeric_values[:2]
-            except:
-                continue
+                for header in team_headers:
+                    # Look for team name links within headers
+                    team_links = header.find_elements(By.TAG_NAME, "a")
+                    if team_links:
+                        team_text = team_links[0].text.strip()
+                        normalized_name = config.normalize_team_name(team_text)
+                        if normalized_name:
+                            team_names.append(normalized_name)
+                            self.logger.debug(f"Found team in table header: '{team_text}' -> '{normalized_name}'")
+                
+                # Extract xG values from the current row
+                xg_cells = table_row.find_elements(By.XPATH, ".//td[position()>1]")  # Skip first column (Stats)
+                xg_values = []
+                
+                for cell in xg_cells:
+                    cell_text = cell.text.strip()
+                    if re.match(r'^\d+(\.\d+)?$', cell_text):
+                        xg_values.append(cell_text)
+                        self.logger.debug(f"Found xG value in table cell: {cell_text}")
+                
+                # Check if we have a perfect match
+                if len(team_names) >= 2 and len(xg_values) >= 2:
+                    self.logger.info(f"Perfect table match found! {team_names[0]}={xg_values[0]}, {team_names[1]}={xg_values[1]}")
+                    
+                    # Store the team names from DOM for use in scrape_match_xg
+                    self.dom_extracted_team_names = team_names[:2]
+                    self.dom_extracted_xg_values = xg_values[:2]
+                    
+                    # Return xG values in team order
+                    return xg_values[:2]
+                    
+            except Exception as e:
+                self.logger.debug(f"Table extraction failed, trying fallback: {e}")
+                
+                # Fallback to original sibling-based approach
+                try:
+                    parent = container.find_element(By.XPATH, "./..")  
+                    siblings = parent.find_elements(By.XPATH, "./*")  
+
+                    # More focused debugging for fallback
+                    container_texts = [s.text.strip() for s in siblings if s.text.strip()]
+                    if any(re.match(r'^\d+(\.\d+)?$', text) for text in container_texts):
+                        self.logger.debug(f"xG container (fallback) found with texts: {container_texts[:5]}...")  # Limit output
+
+                    # Extract numeric values only for fallback
+                    numeric_values = []
+                    for sibling in siblings:  
+                        text = sibling.text.strip()
+                        if re.match(r'^\d+(\.\d+)?$', text):  
+                            numeric_values.append(text)
+                            self.logger.debug(f"Found xG value (fallback): {text}")
+
+                    if len(numeric_values) >= 2:
+                        self.logger.debug(f"Fallback found xG values: {numeric_values[:2]}")
+                        return numeric_values[:2]
+                        
+                except Exception as fallback_e:
+                    self.logger.debug(f"Fallback also failed: {fallback_e}")
+                    continue
+        
+        # If no xG values found at all
+        self.logger.debug("No xG values found in any containers")
         return []
     
     def _strategy_css_xg(self, driver) -> List[str]:
         """Strategy 3: CSS selector-based xG extraction"""
+        self.logger.debug("Executing _strategy_css_xg")
+  
+        xg_values = []
+
         xg_selectors = [
             '[class*="xg"] .value', '[class*="xG"] .value',
             '.stat-xg', '.xg-value', '.expected-goals',
             '[data-stat="xg"]', '[data-value*="xg"]'
         ]
         
-        for selector in xg_selectors:
-            elements = driver.find_elements(By.CSS_SELECTOR, selector)
-            values = [elem.text.strip() for elem in elements 
-                     if elem.text.strip() and re.match(r'^\d+(\.\d+)?$', elem.text.strip())]
-            if len(values) >= 2:
-                return values[:2]
+        for selector in xg_selectors:  
+            try:  
+                self.logger.debug(f"Trying CSS selector: {selector}")  
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)  
+                values = [elem.text.strip() for elem in elements  
+                        if elem.text.strip() and re.match(r'^\d+(\.\d+)?$', elem.text.strip())]  
+                if values:  
+                    self.logger.debug(f"Found xG values with selector '{selector}': {values}")  
+                    xg_values.extend(values)  
+            except Exception as e:  
+                self.logger.debug(f"Error using selector '{selector}': {e}")  
+        
+        # Ensure we return only the first two values if more than two are found  
+        if len(xg_values) >= 2:  
+            self.logger.info(f"_strategy_css_xg succeeded with xG values: {xg_values[:2]}")  
+            return xg_values[:2]  
+        else:  
+            self.logger.debug(f"_strategy_css_xg found insufficient xG values: {xg_values}")  
+    
         return []
