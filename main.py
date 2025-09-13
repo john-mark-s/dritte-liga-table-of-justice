@@ -202,7 +202,7 @@ def start_dashboard(args):
         logger.warning("   python main.py run")
     
     try:
-        dashboard.run(
+        dashboard.app.run_server(  # Changed from dashboard.run()
             host=host,
             port=port,
             debug=debug
@@ -210,7 +210,6 @@ def start_dashboard(args):
     except Exception as e:
         logger.error(f"❌ Dashboard failed to start: {e}")
         sys.exit(1)
-
 def run_scraping(args):
     """Run individual scraping operations"""
     logger = get_logger('scraping')
