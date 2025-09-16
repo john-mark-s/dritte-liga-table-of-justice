@@ -2,15 +2,16 @@ name: Update 3. Liga Data
 
 on:
   schedule:
-    # Run once a day at 10:00 UTC
-    - cron: '0 10 * * *'
-  
-  # Allow manual runs
+    - cron: '0 8 * * *'
   workflow_dispatch:
 
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      pull-requests: write
     
     steps:
     - name: Checkout repository
@@ -37,20 +38,12 @@ jobs:
       run: |
         python main.py run
         
-    - name: Check if data files changed
-      id: verify-changed-files
-      run: |
-        if [ -n "$(git status --porcelain)" ]; then
-          echo "changed=true" >> $GITHUB_OUTPUT
-        else
-          echo "changed=false" >> $GITHUB_OUTPUT
-        fi
-        
-    - name: Commit and push changes
-      if: steps.verify-changed-files.outputs.changed == 'true'
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add .
-        git commit -m "Auto-update data $(date '+%Y-%m-%d %H:%M UTC')"
-        git push
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "Auto-update data $(date '+%Y-%m-%d %H:%M UTC')"
+        title: "Automated data update"
+        body: "Automated update of 3. Liga data"
+        branch: auto-update-data
+        delete-branch: true
