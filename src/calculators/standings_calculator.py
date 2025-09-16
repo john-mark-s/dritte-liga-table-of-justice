@@ -8,10 +8,15 @@ class GenerateClassicStandings:
     def calculate_points_per_spieltag(csv_folder):  
         
         # Filter and sort CSV files  
-        spieltag_files = [  
-            f for f in os.listdir(csv_folder)  
-            if f.endswith('.csv') and not f.endswith('_xg.csv') and not f.endswith('_xp.csv')  
-        ]  
+        spieltag_files = [
+            f for f in os.listdir(csv_folder)
+            if (
+            f.endswith('.csv')
+            and not f.endswith('_xg.csv')
+            and not f.endswith('_xp.csv')
+            and ('soccerway' in f or 'footystats' in f)
+            )
+        ]
           
         print(f"Filtered and sorted files: {spieltag_files}")  
           
