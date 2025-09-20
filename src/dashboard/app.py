@@ -60,22 +60,49 @@ class DashboardDataLoader:
             if 'season' in data:
                 data['season'] = self._merge_xg_data(data['season'], xg_df)
         
-        # Load classical league table if available
-        classical_standings = list(source_dir.glob("classic_standings_spieltag-*.csv"))
-        if classical_standings:
-            standings_df = pd.read_csv(classical_standings[0])
-            data['classical'] = standings_df
-            logger.info(f"Loaded classical standings with {len(standings_df)} teams")
+        # Load classical league table if available (now in season format)
+        classical_files = list(source_dir.glob("season_classic*.csv"))
+        if classical_files:
+            classic_df = pd.read_csv(classical_files[0])
+
+            # Convert to expected format ()
+            classic_season_df = self._convert_season_classic_to_table_format(classic_df)
             
-            # Merge classical standings with season data
+            data['classical'] = classic_season_df
+            # Merge classical standings into season data if available
             if 'season' in data:
-                data['season'] = self._merge_classical_standings(data['season'], standings_df)
+                data['season'] = self._merge_classical_standings(data['season'], classic_season_df)
+            
+            logger.info(f"Loaded classical standings with {len(classic_season_df)} teams")
+            
         else:
             logger.warning(f"No classical standings file found in {source_dir}")
             logger.info("Expected filename pattern: classic_standings_spieltag-*.csv")
         
+        print(data)
         return data
     
+    def _merge_classical_standings(self, season_df: pd.DataFrame, standings_df: pd.DataFrame) -> pd.DataFrame:
+        """Merge classical standings data (actual points) into season dataframe"""
+        if 'Actual_Points' not in standings_df.columns:
+            return season_df
+        
+        try:
+            # Merge with season data
+            season_df = season_df.merge(standings_df[['Team', 'Actual_Points']], 
+                                        on='Team', how='left')
+            
+            # Fill NaN values
+            season_df['Actual_Points'] = season_df['Actual_Points'].fillna(0)
+            
+            logger.info(f"Successfully merged classical points for {len(season_df)} teams")
+            
+        except Exception as e:
+            logger.warning(f"Failed to merge classical standings: {e}")
+            season_df['Actual_Points'] = 0
+        
+        return season_df
+
     def _convert_season_xp_to_table_format(self, df: pd.DataFrame) -> pd.DataFrame:
         """Convert season xP table to dashboard format"""
         if 'Total_xP' not in df.columns:
@@ -97,39 +124,26 @@ class DashboardDataLoader:
         
         return result_df
     
-    def _merge_classical_standings(self, season_df: pd.DataFrame, standings_df: pd.DataFrame) -> pd.DataFrame:
-        """Merge classical standings data (actual points) into season dataframe"""
-        try:
-            # Create mapping from classical standings
-            # Assuming classical standings has columns like 'Team' and 'Points' or 'Pkt'
-            points_col = None
-            for col in ['Total Points']:
-                if col in standings_df.columns:
-                    points_col = col
-                    break
-            
-            if points_col is None:
-                logger.warning("No points column found in classical standings")
-                season_df['Actual_Points'] = 0
-                return season_df
-            
-            # Create clean mapping dataframe
-            standings_clean = standings_df[['Team', points_col]].copy()
-            standings_clean.rename(columns={points_col: 'Actual_Points'}, inplace=True)
-            
-            # Merge with season data
-            season_df = season_df.merge(standings_clean, on='Team', how='left')
-            
-            # Fill missing values with 0
-            season_df['Actual_Points'] = season_df['Actual_Points'].fillna(0)
-            
-            logger.info(f"Successfully merged actual points for {len(season_df)} teams")
-            
-        except Exception as e:
-            logger.warning(f"Failed to merge classical standings: {e}")
-            season_df['Actual_Points'] = 0
+    def _convert_season_classic_to_table_format(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convert classical standings CSV to expected dashboard format"""
         
-        return season_df
+        # Standardize column names
+        df = df.rename(columns={
+            'total_points': 'Actual_Points',
+        })
+
+        # Calculate matches played (count non-null spieltag columns)
+        spieltag_cols = [col for col in df.columns if col.startswith('spieltag-')]
+        result_df = pd.DataFrame()
+        result_df['Team'] = df['Team']
+        result_df['Actual_Points'] = df['Actual_Points']
+        result_df['Matches_Played'] = df[spieltag_cols].notna().sum(axis=1)
+        
+        # Sort by Actual_Points descending for initial positioning
+        result_df = result_df.sort_values('Actual_Points', ascending=False).reset_index(drop=True)
+        result_df['Position'] = range(1, len(result_df) + 1)
+        
+        return result_df
     
     def _merge_xg_data(self, season_df: pd.DataFrame, xg_df: pd.DataFrame) -> pd.DataFrame:
         """Merge xG data into season dataframe - only keeping xGF"""
@@ -216,7 +230,11 @@ def render_league_table_component(source, selected_teams=None):
     
     # Add actual points if available
     if 'Actual_Points' in df.columns:
+        print('Actual_Points column found in data')
         columns.append({"name": "Actual P", "id": "Actual_Points", "type": "numeric"})
+    
+    else:
+        print('No Actual_Points column found in data')
     
     # Add xGF if available (only xGF, not xGA or xGD)
     if 'xGF' in df.columns:
@@ -279,6 +297,7 @@ def render_performance_plot_component(source, selected_teams=None):
     df = source_data['season'].copy()
     
     if 'Actual_Points' in df.columns and not df['Actual_Points'].isna().all():
+        
         # Add jitter
         np.random.seed(42)
         jitter_amount = 0.05
