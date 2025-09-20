@@ -42,8 +42,8 @@ class FootyStatsScraper(BaseScraper):
         """
         return 38 - soccerway_spieltag
     
-    def get_selenium_html(self, url):
-        """Get HTML content using Selenium with error handling and GitHub Actions support"""
+    def get_selenium_html_content(self, url):
+        """Get HTML content as string (in-memory) with error handling"""
         driver = None
         try:
             chromedriver_autoinstaller.install()
@@ -57,7 +57,7 @@ class FootyStatsScraper(BaseScraper):
             if is_ci:
                 # GitHub Actions / CI specific options
                 self.logger.info("🤖 Detected CI environment - using enhanced headless configuration")
-                chrome_options.add_argument('--headless=new')  # Use new headless mode
+                chrome_options.add_argument('--headless=new')
                 chrome_options.add_argument('--no-sandbox')
                 chrome_options.add_argument('--disable-dev-shm-usage')
                 chrome_options.add_argument('--disable-gpu')
@@ -114,15 +114,21 @@ class FootyStatsScraper(BaseScraper):
             wait_time = 5 if is_ci else 3
             time.sleep(wait_time)
             
-            # Save HTML - ensure directory exists
-            html_path = 'data/footystats/footystats_fixtures.html'
-            os.makedirs(os.path.dirname(html_path), exist_ok=True)
+            # Get HTML content directly
+            html_content = driver.page_source
+            self.logger.info(f"✅ Retrieved HTML content ({len(html_content)} characters)")
             
-            with open(html_path, 'w', encoding='utf-8') as f:
-                f.write(driver.page_source)
-            self.logger.info(f"Selenium HTML saved to {html_path}")
-
-            return html_path
+            # Save HTML for debugging (but don't depend on it)
+            try:
+                html_debug_path = 'data/footystats/footystats_fixtures.html'
+                os.makedirs(os.path.dirname(html_debug_path), exist_ok=True)
+                with open(html_debug_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                self.logger.info(f"Debug: HTML saved to {html_debug_path}")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Could not save debug HTML: {e}")
+            
+            return html_content
 
         except Exception as e:
             self.logger.error(f"❌ Error getting HTML with Selenium: {e}")
@@ -132,22 +138,15 @@ class FootyStatsScraper(BaseScraper):
                 try:
                     driver.quit()
                 except:
-                    pass  # Ignore cleanup errors
+                    pass
     
-    def parse_matches_from_html(self, html_path, footystats_spieltag, soccerway_spieltag):
+    def parse_matches_from_html_content(self, html_content: str, footystats_spieltag: int, soccerway_spieltag: int):
         """
-        Parse matches for a given Footystats Spieltag from the HTML file.
-        Returns a list of match dicts with error handling.
+        Parse matches for a given Footystats Spieltag from HTML content string.
+        Modified version of your existing parse_matches_from_html method.
         """
         try:
-            with open(html_path, 'r', encoding='utf-8') as f:
-                html = f.read()
-        except Exception as e:
-            self.logger.error(f"Error reading HTML file {html_path}: {e}")
-            return []
-        
-        try:
-            soup = BeautifulSoup(html, 'html.parser')
+            soup = BeautifulSoup(html_content, 'html.parser')
             week_div = soup.find('div', {'data-game-week': str(footystats_spieltag)})
             if not week_div:
                 self.logger.warning(f'No game week {footystats_spieltag} found in HTML!')
@@ -213,7 +212,7 @@ class FootyStatsScraper(BaseScraper):
             return matches
             
         except Exception as e:
-            self.logger.error(f"Error parsing HTML: {e}")
+            self.logger.error(f"Error parsing HTML content: {e}")
             return []
     
     def export_matches_to_csv(self, matches, soccerway_spieltag):
@@ -231,17 +230,10 @@ class FootyStatsScraper(BaseScraper):
         return csv_path
     
     def scrape_fixtures(self, target_spieltag: int) -> List[Dict[str, Any]]:
-    
-        csv_path = Path(f'data/footystats/footystats_3liga-fixtures_spieltag-{target_spieltag}.csv')
-        
-        # Check if the CSV already exists  
-        if csv_path.exists():  
-            self.logger.info(f"⏩ Skipping Spieltag {target_spieltag}: CSV already exists at {csv_path}")  
-            return []  
-    
-        self.logger.info(f"🏈 Scraping FootyStats fixtures for Spieltag {target_spieltag}")  
-    
-        # Check if spieltag date is in the future  
+        """Scrape fixtures using in-memory HTML processing"""
+        self.logger.info(f"🏈 Scraping FootyStats fixtures for Spieltag {target_spieltag}")
+
+        # Check if spieltag date is in the future
         spieltag_map = getattr(config, 'SPIELTAG_MAP', {})
         if target_spieltag in spieltag_map:
             date_str = spieltag_map[target_spieltag][1]
@@ -254,24 +246,36 @@ class FootyStatsScraper(BaseScraper):
         # Convert Soccerway spieltag to Footystats spieltag
         footystats_spieltag = self.soccerway_to_footystats_spieltag(target_spieltag)
         
-        # Get HTML using Selenium
-        html_path = self.get_selenium_html(self.fixtures_url)
+        # Get HTML content in memory instead of saving to file
+        html_content = self.get_selenium_html_content(self.fixtures_url)
         
-        # Parse matches from HTML
-        matches = self.parse_matches_from_html(html_path, footystats_spieltag, target_spieltag)
+        if not html_content:
+            self.logger.error("❌ Failed to retrieve HTML content")
+            return []
         
-        # Convert matches to the expected format for return value
+        # Parse matches from HTML content (modified to accept string)
+        matches = self.parse_matches_from_html_content(html_content, footystats_spieltag, target_spieltag)
+        
+        # Convert matches to the expected fixture format
         fixtures = []
         for match in matches:
             fixtures.append({
                 'home_team': match['home_team'],
                 'away_team': match['away_team'],
-                'home_goals': match['score_home'],  # Map to expected field name
-                'away_goals': match['score_away'],  # Map to expected field name
-                'match_date': '',  # You'll need to extract this from the HTML
-                'match_time': '',  # You'll need to extract this from the HTML
-                'url': match['url']
+                'home_goals': match['score_home'],
+                'away_goals': match['score_away'],
+                'match_date': '',  # You can extract this if needed
+                'match_time': '',  # You can extract this if needed
+                'stats_link': match['url']  # Use stats_link instead of url for consistency
             })
+            
+            # Log each fixture as it's processed
+            self.logger.info(f"Saving fixture idx={len(fixtures)-1}: home='{match['home_team']}', away='{match['away_team']}', url='{match['url']}'")
+        
+        if fixtures:
+            self.logger.info(f"✅ Successfully parsed {len(fixtures)} matches")
+        else:
+            self.logger.warning(f"⚠️ No fixtures found for Spieltag {target_spieltag}")
             
         return fixtures
     
