@@ -99,29 +99,6 @@ class SoccerwayFixturesScraper(BaseScraper):
         except Exception as e:  
             self.logger.warning(f"⚠️ Error selecting Spielwoche: {e}")  
     
-    def _create_driver(self) -> Optional[webdriver.Chrome]:
-        """Create and configure Chrome driver"""
-        try:
-            chromedriver_autoinstaller.install()
-            
-            chrome_options = Options()
-            chrome_options.add_argument("--headless=new")
-            chrome_options.add_argument("--window-size=1920,1080")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            chrome_options.add_experimental_option("useAutomationExtension", False)
-            
-            driver = webdriver.Chrome(options=chrome_options)
-            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            
-            return driver
-            
-        except Exception as e:
-            self.logger.error(f"❌ Failed to create Chrome driver: {e}")
-            return None
-    
     def _handle_consent_popup(self, driver) -> None:
         """Handle consent popup if present"""
         try:
@@ -235,13 +212,18 @@ class SoccerwayFixturesScraper(BaseScraper):
             self.logger.error(f"❌ Error extracting fixtures: {e}")  
             return []
     
-class SoccerwayXGScraper:
+class SoccerwayXGScraper(BaseScraper):
     """Scraper for xG data from Soccerway match pages"""
     
     NUMERIC_RE = re.compile(r'^\d+(?:[.,]\d+)?$')
     
     def __init__(self):
         self.logger = get_logger('soccerway.xg')
+        super().__init__('soccerway.xg')
+    
+    def scrape_fixtures(self, *args, **kwargs):
+        """Dummy implementation to satisfy BaseScraper ABC."""
+        raise NotImplementedError("SoccerwayXGScraper does not implement fixture scraping.")
     
     def scrape_match_xg(self, url: str) -> Optional[Dict[str, str]]:
         """
@@ -286,47 +268,6 @@ class SoccerwayXGScraper:
                 driver.quit()
             except:
                 pass
-    
-    def _create_driver(self) -> Optional[webdriver.Chrome]:
-        """Create and configure Chrome driver for GitHub Actions environment"""
-        try:
-            chromedriver_autoinstaller.install()
-            
-            chrome_options = Options()
-            
-            # Essential headless options for GitHub Actions
-            chrome_options.add_argument("--headless=new")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--window-size=1920,1080")
-            
-            # Fix for the user-data-dir error
-            chrome_options.add_argument("--disable-web-security")
-            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-            chrome_options.add_argument("--disable-extensions")
-            chrome_options.add_argument("--disable-plugins")
-            chrome_options.add_argument("--disable-images")  # Speed up loading
-            chrome_options.add_argument("--disable-javascript")  # Only if your scraping doesn't need JS
-            
-            # Anti-detection (keep these)
-            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            chrome_options.add_experimental_option("useAutomationExtension", False)
-            
-            # Create driver
-            driver = webdriver.Chrome(options=chrome_options)
-            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            
-            # Set timeouts
-            driver.set_page_load_timeout(30)
-            driver.implicitly_wait(10)
-            
-            return driver
-            
-        except Exception as e:
-            self.logger.error(f"❌ Failed to create Chrome driver: {e}")
-            return None
     
     def _handle_consent(self, driver, timeout: int = 6) -> None:
         """Handle consent popup"""

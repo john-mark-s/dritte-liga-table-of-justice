@@ -22,13 +22,6 @@ from ..utils.scraper_base import BaseScraper
 from ..utils.config import config
 from ..utils.logger import get_logger
 
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
-]
-
 class FootyStatsScraper(BaseScraper):
     def __init__(self):
         super().__init__('footystats')
@@ -44,74 +37,14 @@ class FootyStatsScraper(BaseScraper):
     
     def get_selenium_html_content(self, url):
         """Get HTML content as string (in-memory) with error handling"""
-        driver = None
         try:
-            chromedriver_autoinstaller.install()
-            
-            # Detect if running in GitHub Actions or similar CI environment
-            is_ci = any(env in os.environ for env in ['GITHUB_ACTIONS', 'CI', 'BUILD_NUMBER'])
-            
-            user_agent = random.choice(USER_AGENTS)
-            chrome_options = Options()
-            
-            if is_ci:
-                # GitHub Actions / CI specific options
-                self.logger.info("🤖 Detected CI environment - using enhanced headless configuration")
-                chrome_options.add_argument('--headless=new')
-                chrome_options.add_argument('--no-sandbox')
-                chrome_options.add_argument('--disable-dev-shm-usage')
-                chrome_options.add_argument('--disable-gpu')
-                chrome_options.add_argument('--disable-web-security')
-                chrome_options.add_argument('--disable-features=VizDisplayCompositor')
-                chrome_options.add_argument('--disable-extensions')
-                chrome_options.add_argument('--disable-plugins')
-                chrome_options.add_argument('--single-process')
-                chrome_options.add_argument('--disable-background-timer-throttling')
-                chrome_options.add_argument('--disable-renderer-backgrounding')
-                chrome_options.add_argument('--disable-backgrounding-occluded-windows')
-                chrome_options.add_argument('--memory-pressure-off')
-                chrome_options.add_argument('--max_old_space_size=4096')
-            else:
-                # Local development
-                self.logger.info("💻 Local development mode")
-                chrome_options.add_argument('--headless')
-            
-            # Common options for both environments
-            chrome_options.add_argument('--window-size=1920,1080')
-            chrome_options.add_argument(f'user-agent={user_agent}')
-            
-            # Anti-detection options
-            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            chrome_options.add_experimental_option('useAutomationExtension', False)
-
-            driver = webdriver.Chrome(options=chrome_options)
-            
-            # Set timeouts based on environment
-            timeout = 60 if is_ci else 30
-            driver.set_page_load_timeout(timeout)
-            driver.implicitly_wait(10)
-            
-            # Anti-detection script
-            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            
-            # Set headers (might fail in CI, so wrap in try/catch)
-            try:
-                driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {
-                    'headers': {
-                        'Referer': 'https://www.google.com/',
-                        'Accept-Language': 'en-US,en;q=0.9',
-                        'DNT': '1'
-                    }
-                })
-            except Exception as e:
-                self.logger.warning(f"⚠️ Could not set extra headers (CI environment limitation): {e}")
-            
+            driver = self._create_driver(headless=True)
+        
             self.logger.info(f"Loading URL: {url}")
             driver.get(url)
             
             # Longer wait time in CI environments
-            wait_time = 5 if is_ci else 3
+            wait_time = 10
             time.sleep(wait_time)
             
             # Get HTML content directly
@@ -245,6 +178,7 @@ class FootyStatsScraper(BaseScraper):
         
         # Convert Soccerway spieltag to Footystats spieltag
         footystats_spieltag = self.soccerway_to_footystats_spieltag(target_spieltag)
+        print((f"Mapping Soccerway Spieltag {target_spieltag} to Footystats Spieltag {footystats_spieltag}"))
         
         # Get HTML content in memory instead of saving to file
         html_content = self.get_selenium_html_content(self.fixtures_url)
