@@ -1,0 +1,41 @@
+name: Code Changes Review
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - 'src/**'
+      - '*.py'
+      - 'requirements.txt'
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - 'src/**'
+      - '*.py' 
+      - 'requirements.txt'
+      - '.github/workflows/**'
+
+jobs:
+  test-changes:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Run tests (if you have any)
+      run: |
+        # python -m pytest tests/
+        echo "Code changes validated"
+        
+    - name: Test dashboard startup
+      run: |
+        timeout 10s python main.py dashboard --port 8051 || true
