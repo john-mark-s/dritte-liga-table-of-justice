@@ -5,14 +5,12 @@ FootyStats fixtures
 import os
 import re
 import csv
-import json
 import time
 import random
 import chromedriver_autoinstaller
 from pathlib import Path  
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -45,52 +43,96 @@ class FootyStatsScraper(BaseScraper):
         return 38 - soccerway_spieltag
     
     def get_selenium_html(self, url):
-        """Get HTML content using Selenium with error handling"""
+        """Get HTML content using Selenium with error handling and GitHub Actions support"""
         driver = None
         try:
             chromedriver_autoinstaller.install()
+            
+            # Detect if running in GitHub Actions or similar CI environment
+            is_ci = any(env in os.environ for env in ['GITHUB_ACTIONS', 'CI', 'BUILD_NUMBER'])
+            
             user_agent = random.choice(USER_AGENTS)
             chrome_options = Options()
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
+            
+            if is_ci:
+                # GitHub Actions / CI specific options
+                self.logger.info("🤖 Detected CI environment - using enhanced headless configuration")
+                chrome_options.add_argument('--headless=new')  # Use new headless mode
+                chrome_options.add_argument('--no-sandbox')
+                chrome_options.add_argument('--disable-dev-shm-usage')
+                chrome_options.add_argument('--disable-gpu')
+                chrome_options.add_argument('--disable-web-security')
+                chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+                chrome_options.add_argument('--disable-extensions')
+                chrome_options.add_argument('--disable-plugins')
+                chrome_options.add_argument('--single-process')
+                chrome_options.add_argument('--disable-background-timer-throttling')
+                chrome_options.add_argument('--disable-renderer-backgrounding')
+                chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+                chrome_options.add_argument('--memory-pressure-off')
+                chrome_options.add_argument('--max_old_space_size=4096')
+            else:
+                # Local development
+                self.logger.info("💻 Local development mode")
+                chrome_options.add_argument('--headless')
+            
+            # Common options for both environments
+            chrome_options.add_argument('--window-size=1920,1080')
             chrome_options.add_argument(f'user-agent={user_agent}')
-
-            # Mask referer and other headers via Chrome arguments
+            
+            # Anti-detection options
             chrome_options.add_argument('--disable-blink-features=AutomationControlled')
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
             chrome_options.add_experimental_option('useAutomationExtension', False)
 
             driver = webdriver.Chrome(options=chrome_options)
-            driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {
-                'headers': {
-                    'Referer': 'https://www.google.com/',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'DNT': '1'
-                }
-            })
+            
+            # Set timeouts based on environment
+            timeout = 60 if is_ci else 30
+            driver.set_page_load_timeout(timeout)
+            driver.implicitly_wait(10)
+            
+            # Anti-detection script
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            # Set headers (might fail in CI, so wrap in try/catch)
+            try:
+                driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {
+                    'headers': {
+                        'Referer': 'https://www.google.com/',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'DNT': '1'
+                    }
+                })
+            except Exception as e:
+                self.logger.warning(f"⚠️ Could not set extra headers (CI environment limitation): {e}")
             
             self.logger.info(f"Loading URL: {url}")
             driver.get(url)
-            time.sleep(3)  # Wait for page to load
             
-            # Save HTML
+            # Longer wait time in CI environments
+            wait_time = 5 if is_ci else 3
+            time.sleep(wait_time)
+            
+            # Save HTML - ensure directory exists
             html_path = 'data/footystats/footystats_fixtures.html'
+            os.makedirs(os.path.dirname(html_path), exist_ok=True)
+            
             with open(html_path, 'w', encoding='utf-8') as f:
                 f.write(driver.page_source)
             self.logger.info(f"Selenium HTML saved to {html_path}")
 
             return html_path
-            
+
         except Exception as e:
-            self.logger.error(f"Error getting HTML with Selenium: {e}")
-            raise
+            self.logger.error(f"❌ Error getting HTML with Selenium: {e}")
+            return None
         finally:
             if driver:
                 try:
                     driver.quit()
-                except Exception as e:
-                    self.logger.warning(f"Error closing driver: {e}")
+                except:
+                    pass  # Ignore cleanup errors
     
     def parse_matches_from_html(self, html_path, footystats_spieltag, soccerway_spieltag):
         """

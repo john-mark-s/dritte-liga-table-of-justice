@@ -3,9 +3,7 @@ Soccerway fixtures and xG scraper with improved error handling
 """
 
 import re
-import csv
 import time
-import random
 import chromedriver_autoinstaller
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -290,25 +288,44 @@ class SoccerwayXGScraper:
                 pass
     
     def _create_driver(self) -> Optional[webdriver.Chrome]:
-        """Create Chrome driver"""
+        """Create and configure Chrome driver for GitHub Actions environment"""
         try:
             chromedriver_autoinstaller.install()
             
             chrome_options = Options()
+            
+            # Essential headless options for GitHub Actions
+            chrome_options.add_argument("--headless=new")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            
+            # Fix for the user-data-dir error
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            chrome_options.add_argument("--disable-extensions")
+            chrome_options.add_argument("--disable-plugins")
+            chrome_options.add_argument("--disable-images")  # Speed up loading
+            chrome_options.add_argument("--disable-javascript")  # Only if your scraping doesn't need JS
+            
+            # Anti-detection (keep these)
             chrome_options.add_argument("--disable-blink-features=AutomationControlled")
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            chrome_options.add_experimental_option('useAutomationExtension', False)
+            chrome_options.add_experimental_option("useAutomationExtension", False)
             
+            # Create driver
             driver = webdriver.Chrome(options=chrome_options)
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            driver.set_page_load_timeout(40)
+            
+            # Set timeouts
+            driver.set_page_load_timeout(30)
+            driver.implicitly_wait(10)
             
             return driver
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to create driver: {e}")
+            self.logger.error(f"❌ Failed to create Chrome driver: {e}")
             return None
     
     def _handle_consent(self, driver, timeout: int = 6) -> None:
