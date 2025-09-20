@@ -76,44 +76,42 @@ class GenerateClassicStandings:
           
         return df_points  
     
-    def calculate_classic_standings(self, csv_folder):  
-        
+    def calculate_classic_standings(self, csv_folder):
         csv_folder = config.SOCCERWAY_DIR
         export_folder2 = config.FOOTYSTATS_DIR
 
         # Load the points per spieltag data  
         df_points = self.calculate_points_per_spieltag(csv_folder)
-        
-        # Extract spieltag numbers from filenames in the folder
-        spieltag_files = [
-            f for f in os.listdir(csv_folder)
-            if f.endswith('.csv') and not f.endswith('_xg.csv') and not f.endswith('_xp.csv')
-        ]
-        spieltag_numbers = []
-        for f in spieltag_files:
-            match = re.search(r'spieltag-(\d+)', f)
-            if match:
-                spieltag_numbers.append(int(match.group(1)))
-        if spieltag_numbers:
-            latest_spieltag = max(spieltag_numbers)
-        else:
-            latest_spieltag = len(spieltag_columns)
-            
-        spieltag_columns = [col for col in df_points.columns if col.startswith('points_spieltag')]
-        
-        # Calculate total points up to the latest spieltag  
-        df_points['Total Points'] = df_points[spieltag_columns].sum(axis=1)  
-          
-        # Sort by total points in descending order  
-        df_standings = df_points[['Team', 'Total Points']].sort_values(by='Total Points', ascending=False)  
-          
-        # Save the standings to a CSV file  
-        output_filename = f'classic_standings_spieltag-{latest_spieltag}.csv'  
-        output_path = os.path.join(csv_folder, output_filename)  
-        df_standings.to_csv(output_path, index=False)
-        
-        output_filename2 = f'classic_standings_spieltag-{latest_spieltag}.csv'  
-        output_path2 = os.path.join(export_folder2, output_filename2)
-        df_standings.to_csv(output_path2, index=False)
 
-        print(f"Classic standings saved to {output_path}")
+        # Extract spieltag numbers from columns
+        spieltag_columns = [col for col in df_points.columns if col.startswith('points_spieltag')]
+        spieltags = sorted(
+            [int(col.split('points_spieltag')[1]) for col in spieltag_columns]
+        )
+        spieltag_columns_sorted = [f'points_spieltag{i}' for i in spieltags]
+
+        # Rename columns to match 'spieltag-{n}' format
+        rename_map = {f'points_spieltag{i}': f'spieltag-{i}' for i in spieltags}
+        df_points = df_points.rename(columns=rename_map)
+
+        spieltag_cols = [f'spieltag-{i}' for i in spieltags]
+
+        # Add total_points column at the end
+        df_points['total_points'] = df_points[spieltag_cols].sum(axis=1, skipna=True)
+
+        # Sort by total_points descending
+        df_points = df_points.sort_values('total_points', ascending=False).reset_index(drop=True)
+
+        # Reorder columns: Team, spieltag-1, ..., spieltag-N, total_points
+        final_columns = ['Team'] + spieltag_cols + ['total_points']
+        df_final = df_points[final_columns]
+
+        # Save to CSV (like season_xp)
+        output_filename = 'season_classic_table.csv'
+        output_path = os.path.join(csv_folder, output_filename)
+        df_final.to_csv(output_path, index=False)
+
+        output_path2 = os.path.join(export_folder2, output_filename)
+        df_final.to_csv(output_path2, index=False)
+
+        print(f"Classic season standings saved to {output_path} and {output_path2}")
