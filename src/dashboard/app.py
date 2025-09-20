@@ -79,7 +79,6 @@ class DashboardDataLoader:
             logger.warning(f"No classical standings file found in {source_dir}")
             logger.info("Expected filename pattern: classic_standings_spieltag-*.csv")
         
-        print(data)
         return data
     
     def _merge_classical_standings(self, season_df: pd.DataFrame, standings_df: pd.DataFrame) -> pd.DataFrame:

@@ -5,9 +5,11 @@ Base scraper class with improved error handling and rate limiting
 import time
 import random
 import requests
+import chromedriver_autoinstaller
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any
-from urllib.parse import urljoin
 
 from .config import config
 from .logger import get_logger
@@ -120,6 +122,51 @@ class BaseScraper(ABC):
         self.logger.error(f"❌ Failed to fetch {url} after {self.max_retries} attempts")
         return None
     
+    def _create_driver(self, headless=True):
+        try:
+            chromedriver_autoinstaller.install()
+            chrome_options = Options()
+            user_agent = random.choice(self.user_agents)
+            chrome_options.add_argument(f'--user-agent={user_agent}')
+            chrome_options.add_argument("--headless=new")
+
+            # Essential headless options for GitHub Actions
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            
+            # Fix for the user-data-dir error
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            chrome_options.add_argument("--disable-extensions")
+            chrome_options.add_argument("--disable-plugins")
+            chrome_options.add_argument("--disable-images")  # Speed up loading
+            
+            # Anti-detection
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option("useAutomationExtension", False)
+
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            # Set timeouts
+            driver.set_page_load_timeout(30)
+            driver.implicitly_wait(10)
+
+            return driver
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to create Chrome driver: {e}")
+            return None
+
+            return driver
+        
+        except Exception as e:
+            self.logger.error(f"❌ Failed to create Chrome driver: {e}")
+            return None
+
     def normalize_team_names(self, fixtures: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize team names in fixture data"""
         for fixture in fixtures:
