@@ -1,3 +1,4 @@
+# .github/workflows/update-data.yaml - Direct commits for data
 name: Update 3. Liga Data
 
 on:
@@ -11,7 +12,6 @@ jobs:
     
     permissions:
       contents: write
-      pull-requests: write
     
     steps:
     - name: Checkout repository
@@ -34,16 +34,21 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Run your data collection pipeline
+    - name: Run data collection pipeline
       run: |
         python main.py run
         
-    - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v5
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        commit-message: "Auto-update data $(date '+%Y-%m-%d %H:%M UTC')"
-        title: "Automated data update"
-        body: "Automated update of 3. Liga data"
-        branch: auto-update-data
-        delete-branch: true
+    - name: Commit and push data updates
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "3. Liga Data Bot"
+        
+        # Only commit if there are changes
+        if [[ -n $(git status --porcelain) ]]; then
+          git add data/
+          git commit -m "🤖 Auto-update 3. Liga data $(date '+%Y-%m-%d %H:%M UTC')"
+          git push
+          echo "✅ Data updated and pushed"
+        else
+          echo "ℹ️ No data changes detected"
+        fi
