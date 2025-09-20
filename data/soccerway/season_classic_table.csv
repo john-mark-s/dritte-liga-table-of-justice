@@ -1,21 +1,21 @@
-Team,spieltag-1,spieltag-2,spieltag-3,spieltag-4,spieltag-5,total_points
-MSV Duisburg,3,3,3,3,3,15
-TSV 1860 München,1,3,1,3,3,11
-1. FC Saarbrücken,3,3,1,3,0,10
-TSG Hoffenheim II U23,3,0,1,3,3,10
-FC Viktoria Köln,3,3,3,0,0,9
-Rot-Weiss Essen,0,3,1,1,3,8
-Energie Cottbus,1,3,1,3,0,8
-VfL Osnabrück,3,1,1,0,3,8
-SV Wehen Wiesbaden,3,0,3,1,0,7
-SV Waldhof Mannheim,3,0,1,0,3,7
-SSV Ulm 1846,0,3,0,3,0,6
-SC Verl,0,3,1,1,1,6
-F.C. Hansa Rostock,0,1,1,3,1,6
-VfB Stuttgart II U21,1,0,0,3,1,5
-Alemannia Aachen,3,0,1,0,0,4
-SSV Jahn Regensburg,0,0,1,0,3,4
-Erzgebirge Aue,0,0,1,0,3,4
-1. FC Schweinfurt 05,0,3,0,0,0,3
-FC Ingolstadt 04,1,0,1,0,1,3
-TSV Havelse,0,0,1,1,0,2
+Team,spieltag-1,spieltag-2,spieltag-3,spieltag-4,spieltag-5,spieltag-6,total_points
+MSV Duisburg,3,3,3,3,3,3,18
+1. FC Saarbrücken,0,3,3,3,3,1,13
+FC Viktoria Köln,0,0,3,3,3,3,12
+TSV 1860 München,3,3,1,3,0,1,11
+Energie Cottbus,0,3,1,3,3,1,11
+SV Wehen Wiesbaden,0,1,3,0,3,3,10
+TSG Hoffenheim II U23,3,3,3,0,0,1,10
+VfL Osnabrück,3,0,3,1,1,1,9
+Rot-Weiss Essen,3,1,0,3,1,1,9
+SC Verl,1,1,0,3,3,1,9
+F.C. Hansa Rostock,1,3,0,1,3,1,9
+VfB Stuttgart II U21,1,3,1,0,3,0,8
+SV Waldhof Mannheim,3,0,3,0,0,1,7
+SSV Ulm 1846,0,3,0,3,0,0,6
+FC Ingolstadt 04,1,0,1,0,3,1,6
+Alemannia Aachen,0,0,3,0,0,1,4
+SSV Jahn Regensburg,3,0,0,0,0,1,4
+Erzgebirge Aue,3,0,0,0,0,1,4
+1. FC Schweinfurt 05,0,0,0,3,0,0,3
+TSV Havelse,0,1,0,0,0,1,2
