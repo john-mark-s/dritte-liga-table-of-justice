@@ -1,0 +1,11 @@
+spieltag,home_team,away_team,home_goals,away_goals,url,home_xG,away_xG,home_xP,away_xP,home_win_prob,draw_prob,away_win_prob
+6,FC Viktoria Köln,TSG Hoffenheim II U23,2,1,https://int.soccerway.com/matches/2025/09/16/germany/3-liga/viktoria/hoffenheim-ii/I1998541/,2.03,0.44,2.435,0.386,0.752,0.179,0.069
+6,SC Verl,Alemannia Aachen,2,1,https://int.soccerway.com/matches/2025/09/16/germany/3-liga/verl/alemannia/I1998450/,1.91,1.54,1.618,1.162,0.466,0.221,0.314
+6,1. FC Saarbrücken,SSV Ulm 1846,3,1,https://int.soccerway.com/matches/2025/09/16/germany/3-liga/saarbr-cken/ulm/I2097168/,1.08,2.38,0.651,2.167,0.157,0.182,0.662
+6,1. FC Schweinfurt 05,MSV Duisburg,0,3,https://int.soccerway.com/matches/2025/09/16/germany/3-liga/schweinfurt/duisburg/I1998543/,1.01,1.39,1.09,1.64,0.273,0.27,0.456
+6,SV Wehen Wiesbaden,SSV Jahn Regensburg,2,0,https://int.soccerway.com/matches/2025/09/16/germany/3-liga/wiesbaden/regensburg/I1998544/,2.99,1.96,1.94,0.892,0.591,0.168,0.241
+6,F.C. Hansa Rostock,TSV 1860 München,2,1,https://int.soccerway.com/matches/2025/09/17/germany/3-liga/rostock/1860-m-nchen/I2006051/,0.82,1.58,0.835,1.913,0.194,0.252,0.554
+6,Rot-Weiss Essen,VfL Osnabrück,1,1,https://int.soccerway.com/matches/2025/09/17/germany/3-liga/rw-essen/osnabr-ck/I1998451/,0.73,1.55,0.781,1.964,0.175,0.255,0.57
+6,SV Waldhof Mannheim,VfB Stuttgart II U21,0,1,https://int.soccerway.com/matches/2025/09/17/germany/3-liga/waldhof/stuttgart-ii/I1998470/,0.67,0.85,1.162,1.476,0.266,0.362,0.371
+6,TSV Havelse,FC Ingolstadt 04,2,6,https://int.soccerway.com/matches/2025/09/17/germany/3-liga/havelse/ingolstadt/I1998454/,1.72,3.38,0.631,2.224,0.163,0.142,0.694
+6,Energie Cottbus,Erzgebirge Aue,2,1,https://int.soccerway.com/matches/2025/09/17/germany/3-liga/cottbus/aue/I1998453/,1.91,1.25,1.807,0.97,0.528,0.223,0.249
