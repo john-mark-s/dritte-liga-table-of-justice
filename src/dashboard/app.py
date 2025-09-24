@@ -155,7 +155,6 @@ class DashboardDataLoader:
             xg_summary['Team'] = xg_df['Team']
             
             # Only extract xGF (Goals For) - assuming Total_xG represents this
-            # You might need to adjust this based on your actual xG data structure
             if 'xGF' in xg_df.columns:
                 xg_summary['xGF'] = xg_df['xGF']
             elif 'Goals_For_xG' in xg_df.columns:
@@ -214,6 +213,10 @@ def render_league_table_component(source, selected_teams=None):
         return dbc.Alert("No season data available", color="warning")
     
     df = source_data['season'].copy()
+
+        # Calculate Points Diff (Actual_Points - xP)
+    if 'Actual_Points' in df.columns and 'xP' in df.columns:
+        df['Points Diff'] = (df['Actual_Points'] - df['xP']).round(1)
     
     # Filter by selected teams if any
     if selected_teams:
@@ -224,42 +227,11 @@ def render_league_table_component(source, selected_teams=None):
         {"name": "Pos", "id": "Position", "type": "numeric"},
         {"name": "Team", "id": "Team"},
         {"name": "MP", "id": "Matches_Played", "type": "numeric"},
+        {"name": "Actual P", "id": "Actual_Points", "type": "numeric"},
         {"name": "xP", "id": "xP", "type": "numeric", "format": {"specifier": ".1f"}},
+        {"name": "Points Diff", "id": "Points Diff", "type": "numeric", "format": {"specifier": ".1f"}}
     ]
     
-    # Add actual points if available
-    if 'Actual_Points' in df.columns:
-        print('Actual_Points column found in data')
-        columns.append({"name": "Actual P", "id": "Actual_Points", "type": "numeric"})
-    
-    else:
-        print('No Actual_Points column found in data')
-    
-    # Add xGF if available (only xGF, not xGA or xGD)
-    if 'xGF' in df.columns:
-        columns.append({"name": "xGF", "id": "xGF", "type": "numeric", "format": {"specifier": ".1f"}})
-    
-    # Style data conditionally
-    style_data_conditional = [
-        # Promotion zone (top 2)
-        {
-            'if': {'filter_query': '{Position} <= 2'},
-            'backgroundColor': '#d4edda',
-            'color': 'black',
-        },
-        # Playoff zone (3rd)
-        {
-            'if': {'filter_query': '{Position} = 3'},
-            'backgroundColor': '#fff3cd',
-            'color': 'black',
-        },
-        # Relegation zone (bottom 4)
-        {
-            'if': {'filter_query': f'{{Position}} >= {len(df)-3}'},
-            'backgroundColor': '#f8d7da',
-            'color': 'black',
-        },
-    ]
     
     filter_text = f" (Filtered: {len(df)} teams)" if selected_teams else f" (All {len(df)} teams)"
     
@@ -273,15 +245,9 @@ def render_league_table_component(source, selected_teams=None):
                 columns=columns,
                 style_cell={'textAlign': 'center', 'padding': '8px', 'fontSize': '12px'},
                 style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold', 'fontSize': '12px'},
-                style_data_conditional=style_data_conditional,
                 sort_action="native",
                 page_size=20,
-            ),
-            html.Div([
-                html.Small([
-                    "🟢 Promotion • 🟡 Playoff • 🔴 Relegation"
-                ], className="text-muted mt-2")
-            ])
+            )
         ])
     ])
 
