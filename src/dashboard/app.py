@@ -412,10 +412,10 @@ app.layout = dbc.Container([
     ]),
     
     # Data source tabs
-    dbc.Tabs([
-        dbc.Tab(label="FootyStats", tab_id="footystats"),
-        dbc.Tab(label="Soccerway", tab_id="soccerway"),
-    ], id="source-tabs", active_tab="footystats"),
+    # dbc.Tabs([
+    #     dbc.Tab(label="FootyStats", tab_id="footystats"),
+    #     dbc.Tab(label="Soccerway", tab_id="soccerway"),
+    # ], id="source-tabs", active_tab="footystats"),
 
     # Controls
     dbc.Row([
@@ -445,7 +445,7 @@ app.layout = dbc.Container([
     html.Hr(),
     html.Footer([
         html.P([
-            "Data scraped from FootyStats and Soccerway • ",
+            "Data scraped from FootyStats • ",
             f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         ], className="text-center text-muted small")
     ])
@@ -455,10 +455,11 @@ app.layout = dbc.Container([
 # Callbacks for main content and team filter
 @callback(
     Output("team-filter-dropdown", "options"),
-    [Input("source-tabs", "active_tab")]
+    [Input("team-filter-dropdown", "id")]
 )
-def update_team_filter_options(source):
+def update_team_filter_options(_):
     """Update team filter options based on selected data source"""
+    source = "footystats"
     if not source or source not in data_loader.data:
         return []
     
@@ -471,10 +472,10 @@ def update_team_filter_options(source):
 
 @callback(
     Output("main-content", "children"),
-    [Input("source-tabs", "active_tab"),
-     Input("team-filter-dropdown", "value")]
+     Input("team-filter-dropdown", "value")
 )
-def render_main_content(source, selected_teams):
+def render_main_content(selected_teams):
+    source = "footystats"
     if not source or source not in data_loader.data:
         return dbc.Alert("No data available. Run the pipeline first.", color="warning")
     
