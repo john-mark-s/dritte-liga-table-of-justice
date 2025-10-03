@@ -77,8 +77,7 @@ class GenerateClassicStandings:
         return df_points  
     
     def calculate_classic_standings(self, csv_folder):
-        csv_folder = config.SOCCERWAY_DIR
-        export_folder2 = config.FOOTYSTATS_DIR
+        csv_folder = config.FOOTYSTATS_DIR
 
         # Load the points per spieltag data  
         df_points = self.calculate_points_per_spieltag(csv_folder)
@@ -111,7 +110,4 @@ class GenerateClassicStandings:
         output_path = os.path.join(csv_folder, output_filename)
         df_final.to_csv(output_path, index=False)
 
-        output_path2 = os.path.join(export_folder2, output_filename)
-        df_final.to_csv(output_path2, index=False)
-
-        print(f"Classic season standings saved to {output_path} and {output_path2}")
+        print(f"Classic season standings saved to {output_path}")
