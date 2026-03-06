@@ -1,21 +1,21 @@
-Team,points_spieltag1,points_spieltag2,points_spieltag3,points_spieltag4,points_spieltag5,points_spieltag6,points_spieltag7,points_spieltag8,points_spieltag9,points_spieltag10,points_spieltag11,points_spieltag12,points_spieltag13,points_spieltag14,points_spieltag15,points_spieltag16,points_spieltag17,points_spieltag18,points_spieltag19
-FC Viktoria Köln,1,3,1,1,3,3,3,0,3,0,3,0,0,0,0,3,0,3,0
-MSV Duisburg,1,1,3,1,1,3,3,1,1,1,3,0,0,3,3,3,3,3,0
-TSG Hoffenheim II U23,3,1,1,0,3,3,0,1,0,3,0,3,3,3,3,0,0,1,3
-SV Wehen Wiesbaden,0,3,1,1,3,3,0,0,3,1,3,0,0,1,0,0,3,3,3
-TSV Havelse,1,3,1,0,0,0,0,0,0,1,0,0,3,1,0,1,0,1,1
-Alemannia Aachen,1,0,3,0,3,3,0,3,0,3,0,0,0,0,0,3,0,1,1
-TSV 1860 München,0,3,0,1,3,1,3,0,0,0,0,3,3,3,3,0,3,1,3
-SC Verl,3,1,0,1,1,0,3,3,3,3,3,3,3,1,1,1,3,1,1
-Erzgebirge Aue,3,1,3,3,3,0,0,1,1,0,0,0,1,0,3,1,0,1,1
-1. FC Schweinfurt 05,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,3,0,0,0
-VfL Osnabrück,0,3,1,3,1,3,1,3,3,3,1,0,3,0,3,3,0,1,0
-VfB Stuttgart II U21,3,0,0,1,3,1,0,0,3,3,3,3,1,3,1,0,3,0,1
-SV Waldhof Mannheim,1,0,3,3,0,3,0,3,0,0,0,3,3,0,3,0,3,1,3
-FC Ingolstadt 04,1,0,0,1,0,1,0,3,3,1,3,3,0,0,1,0,3,1,1
-Rot-Weiss Essen,3,1,0,3,3,0,3,1,1,3,1,3,0,1,3,3,3,1,1
-SSV Ulm 1846,0,0,1,3,0,0,3,0,0,3,0,0,0,3,0,0,0,0,3
-F.C. Hansa Rostock,1,3,1,0,1,0,1,3,1,0,3,3,3,3,1,3,3,1,1
-1. FC Saarbrücken,1,1,1,1,0,3,3,0,1,3,3,0,0,3,0,1,0,1,0
-Energie Cottbus,1,0,3,3,0,1,3,3,3,0,3,3,3,3,0,0,3,1,3
-SSV Jahn Regensburg,1,3,3,0,0,0,0,3,1,0,0,3,3,0,3,3,0,1,0
+Team,points_spieltag1,points_spieltag2,points_spieltag3,points_spieltag4,points_spieltag5,points_spieltag6,points_spieltag7,points_spieltag8,points_spieltag9,points_spieltag10,points_spieltag11,points_spieltag12,points_spieltag13,points_spieltag14,points_spieltag15,points_spieltag16,points_spieltag17,points_spieltag18,points_spieltag19,points_spieltag20,points_spieltag21,points_spieltag22,points_spieltag23,points_spieltag24,points_spieltag25,points_spieltag26
+1. FC Schweinfurt 05,1,0,0,1,0,3,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,3,0,0,0
+1. FC Saarbrücken,1,1,1,3,1,1,0,1,1,1,0,0,3,3,0,1,3,3,0,0,3,0,1,0,1,0
+MSV Duisburg,1,1,3,0,1,3,3,3,3,1,0,1,3,3,1,1,1,3,0,0,3,3,3,3,3,0
+TSV Havelse,1,1,0,0,3,3,0,0,1,0,3,0,0,0,0,0,1,0,0,3,1,0,1,0,1,1
+SV Waldhof Mannheim,3,1,0,1,0,0,0,3,3,3,3,0,3,0,3,0,0,0,3,3,0,3,0,3,1,3
+Alemannia Aachen,0,1,3,3,0,0,3,1,3,0,1,3,3,0,3,0,3,0,0,0,0,0,3,0,1,1
+Energie Cottbus,1,1,3,1,0,1,3,1,3,3,3,0,1,3,3,3,0,3,3,3,3,0,0,3,1,3
+SC Verl,1,3,0,3,1,3,0,0,0,1,3,1,0,3,3,3,3,3,3,3,1,1,1,3,1,1
+SSV Jahn Regensburg,1,1,3,0,3,0,0,1,3,0,3,0,0,0,3,1,0,0,3,3,0,3,3,0,1,0
+SSV Ulm 1846,1,0,1,0,0,0,3,0,1,3,3,0,0,3,0,0,3,0,0,0,3,0,0,0,0,3
+Erzgebirge Aue,0,3,0,1,1,0,0,1,3,3,0,3,0,0,1,1,0,0,0,1,0,3,1,0,1,1
+VfL Osnabrück,3,0,3,1,3,3,1,3,1,3,3,1,3,1,3,3,3,1,0,3,0,3,3,0,1,0
+FC Viktoria Köln,3,1,3,1,3,0,3,1,1,1,0,3,3,3,0,3,0,3,0,0,0,0,3,0,3,0
+VfB Stuttgart II U21,0,3,3,0,0,0,0,3,0,1,0,3,1,0,0,3,3,3,3,1,3,1,0,3,0,1
+SV Wehen Wiesbaden,3,0,0,3,3,3,3,3,1,1,1,3,3,0,0,3,1,3,0,0,1,0,0,3,3,3
+FC Ingolstadt 04,0,1,3,1,0,3,3,1,0,1,3,0,1,0,3,3,1,3,3,0,0,1,0,3,1,1
+F.C. Hansa Rostock,3,1,0,1,3,3,3,1,1,0,0,1,0,1,3,1,0,3,3,3,3,1,3,3,1,1
+Rot-Weiss Essen,0,3,0,3,1,1,3,1,0,3,1,3,0,3,1,1,3,1,3,0,1,3,3,3,1,1
+TSG Hoffenheim II U23,0,3,0,0,1,0,0,1,1,0,0,3,3,0,1,0,3,0,3,3,3,3,0,0,1,3
+TSV 1860 München,3,0,3,3,3,1,1,0,0,1,1,3,1,3,0,0,0,0,3,3,3,3,0,3,1,3
